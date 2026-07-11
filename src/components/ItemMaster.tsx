@@ -134,17 +134,11 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
     }
   };
 
-  const fetchCategories = async () => {
+  const fetchCategories = () => {
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order');
-
-      if (error) throw error;
-      console.log('Fetched categories:', data);
-      setCategories(data || []);
+      const stored = localStorage.getItem('pos_categories');
+      const all = stored ? JSON.parse(stored) : [];
+      setCategories(all.filter((c: any) => c.is_active));
     } catch (error) {
       console.error('Error fetching categories:', error);
     }
