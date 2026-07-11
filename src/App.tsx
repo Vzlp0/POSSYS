@@ -32,13 +32,14 @@ import TaskManagement from './components/TaskManagement';
 import SupplierManagement from './components/SupplierManagement';
 import ComboManagement from './components/ComboManagement';
 import ComboProfitReport from './components/ComboProfitReport';
+import FeaturesHub from './components/FeaturesHub';
 import ThemeToggle from './components/ThemeToggle';
 import { LogOut, User, ChevronDown, Users } from 'lucide-react';
 
 function AppContent() {
   const { user, logout, switchUser, isLoading } = useAuth();
   const { isDarkMode } = useTheme();
-  const [activeItem, setActiveItem] = useState('dashboard');
+  const [activeItem, setActiveItem] = useState('hub');
   const [menuScreensPage, setMenuScreensPage] = useState<'dashboard' | 'menu-admin' | 'template-designer' | 'screens-manager' | 'player'>('dashboard');
   const [cameraPage, setCameraPage] = useState<'overview' | 'event-viewer' | 'live-view' | 'playback' | 'devices' | 'settings'>('overview');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -84,6 +85,8 @@ function AppContent() {
 
   const renderContent = () => {
     switch (activeItem) {
+      case 'hub':
+        return <FeaturesHub onNavigate={setActiveItem} />;
       case 'dashboard':
         return <Dashboard setActiveItem={setActiveItem} />;
       case 'users':
@@ -161,7 +164,7 @@ function AppContent() {
           />
         );
       default:
-        return <Dashboard />;
+        return <FeaturesHub onNavigate={setActiveItem} />;
     }
   };
 
