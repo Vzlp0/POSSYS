@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Search, X, User, Phone, Mail, Coffee } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 interface Client {
   id: string;
@@ -51,29 +50,22 @@ export default function ClientLookupModal({ onClose, onSelectClient }: ClientLoo
     }
   }, [searchTerm, clients]);
 
-  const loadClients = async () => {
+  const loadClients = () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('clients')
-        .select(`
-          *,
-          loyalty_card:loyalty_cards(*)
-        `)
-        .eq('status', 'active')
-        .order('last_name', { ascending: true });
+      const allClients: any[] = JSON.parse(localStorage.getItem('pos_clients') || '[]');
+      const loyaltyCards: any[] = JSON.parse(localStorage.getItem('pos_loyalty_cards') || '[]');
 
-      if (error) throw error;
+      const active = allClients
+        .filter(c => c.status === 'active' || !c.status)
+        .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''))
+        .map(client => ({
+          ...client,
+          loyalty_card: loyaltyCards.find(lc => lc.client_id === client.id && lc.status === 'active')
+        }));
 
-      const formattedClients = data.map((client: any) => ({
-        ...client,
-        loyalty_card: client.loyalty_card && client.loyalty_card.length > 0
-          ? client.loyalty_card[0]
-          : undefined
-      }));
-
-      setClients(formattedClients);
-      setFilteredClients(formattedClients);
+      setClients(active);
+      setFilteredClients(active);
     } catch (error) {
       console.error('Error loading clients:', error);
     } finally {

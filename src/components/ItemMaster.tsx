@@ -16,7 +16,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Item } from '../types';
-import { supabase } from '../lib/supabase';
 import { generateBarcode } from '../lib/barcodeHelpers';
 import CategoriesManagement from './CategoriesManagement';
 
@@ -116,19 +115,15 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
     fetchCategories();
   }, []);
 
-  const fetchItems = async () => {
+  const fetchItems = () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setItems(data || []);
+      const stored = localStorage.getItem('pos_items');
+      const data: any[] = stored ? JSON.parse(stored) : [];
+      data.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      setItems(data);
     } catch (error) {
       console.error('Error fetching items:', error);
-      alert('Failed to load items');
     } finally {
       setLoading(false);
     }
@@ -273,94 +268,49 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
     console.log('Saving item with data:', formData);
 
     try {
+      const itemPayload = {
+        name: formData.name_en,
+        name_en: formData.name_en,
+        name_ar: formData.name_ar,
+        sku: formData.sku,
+        barcode: formData.barcode || null,
+        manufacturer_barcode: formData.manufacturer_barcode || null,
+        category: formData.category,
+        unit: formData.unit,
+        price: formData.price,
+        cost: formData.standard_cost,
+        standard_cost: formData.standard_cost,
+        vat: formData.vat,
+        vat_mode: formData.vat_mode,
+        vat_rate: formData.vat,
+        average_cost: formData.average_cost,
+        last_purchase_cost: formData.last_purchase_cost,
+        markup_percentage: formData.markupPercentage,
+        last_price_update: new Date().toISOString(),
+        is_expiry_tracked: formData.isExpiryTracked,
+        show_in_pos: formData.showInPOS,
+        available_for_online_order: formData.availableForOnlineOrder,
+        suppliers: formData.suppliers,
+        image_url: formData.image_url,
+        base_unit: formData.base_unit,
+        purchase_unit: formData.purchase_unit || null,
+        conversion_factor: formData.conversion_factor,
+        current_stock_base: formData.current_stock_base,
+        printed_label_source: formData.printed_label_source,
+        printed_label_supplier_id: formData.printed_label_supplier_id || null,
+      };
+
+      const allItems: any[] = JSON.parse(localStorage.getItem('pos_items') || '[]');
+
       if (editingItem) {
-        console.log('Updating item:', editingItem.id);
-        const { data, error } = await supabase
-          .from('items')
-          .update({
-            name: formData.name_en,
-            name_en: formData.name_en,
-            name_ar: formData.name_ar,
-            sku: formData.sku,
-            barcode: formData.barcode || null,
-            manufacturer_barcode: formData.manufacturer_barcode || null,
-            category: formData.category,
-            unit: formData.unit,
-            price: formData.price,
-            cost: formData.standard_cost,
-            standard_cost: formData.standard_cost,
-            vat: formData.vat,
-            vat_mode: formData.vat_mode,
-            vat_rate: formData.vat,
-            average_cost: formData.average_cost,
-            last_purchase_cost: formData.last_purchase_cost,
-            markup_percentage: formData.markupPercentage,
-            last_price_update: new Date().toISOString(),
-            is_expiry_tracked: formData.isExpiryTracked,
-            show_in_pos: formData.showInPOS,
-            available_for_online_order: formData.availableForOnlineOrder,
-            suppliers: formData.suppliers,
-            image_url: formData.image_url,
-            base_unit: formData.base_unit,
-            purchase_unit: formData.purchase_unit || null,
-            conversion_factor: formData.conversion_factor,
-            current_stock_base: formData.current_stock_base,
-            printed_label_source: formData.printed_label_source,
-            printed_label_supplier_id: formData.printed_label_supplier_id || null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', editingItem.id);
-
-        if (error) {
-          console.error('Update error:', error);
-          throw error;
-        }
-        console.log('Update successful:', data);
+        const idx = allItems.findIndex(i => i.id === editingItem.id);
+        if (idx !== -1) allItems[idx] = { ...allItems[idx], ...itemPayload, updated_at: new Date().toISOString() };
       } else {
-        console.log('Inserting new item');
-        const { data, error } = await supabase
-          .from('items')
-          .insert({
-            name: formData.name_en,
-            name_en: formData.name_en,
-            name_ar: formData.name_ar,
-            sku: formData.sku,
-            barcode: formData.barcode || null,
-            manufacturer_barcode: formData.manufacturer_barcode || null,
-            category: formData.category,
-            unit: formData.unit,
-            price: formData.price,
-            cost: formData.standard_cost,
-            standard_cost: formData.standard_cost,
-            vat: formData.vat,
-            vat_mode: formData.vat_mode,
-            vat_rate: formData.vat,
-            average_cost: formData.average_cost,
-            last_purchase_cost: formData.last_purchase_cost,
-            markup_percentage: formData.markupPercentage,
-            last_price_update: new Date().toISOString(),
-            is_expiry_tracked: formData.isExpiryTracked,
-            show_in_pos: formData.showInPOS,
-            available_for_online_order: formData.availableForOnlineOrder,
-            suppliers: formData.suppliers,
-            image_url: formData.image_url,
-            base_unit: formData.base_unit,
-            purchase_unit: formData.purchase_unit || null,
-            conversion_factor: formData.conversion_factor,
-            current_stock_base: formData.current_stock_base,
-            printed_label_source: formData.printed_label_source,
-            printed_label_supplier_id: formData.printed_label_supplier_id || null
-          });
-
-        if (error) {
-          console.error('Insert error:', error);
-          throw error;
-        }
-        console.log('Insert successful:', data);
+        allItems.unshift({ ...itemPayload, id: Date.now().toString(), created_at: new Date().toISOString() });
       }
 
-      console.log('Fetching items...');
-      await fetchItems();
+      localStorage.setItem('pos_items', JSON.stringify(allItems));
+      fetchItems();
       setShowAddForm(false);
       setEditingItem(null);
       alert('Item saved successfully!');
@@ -370,16 +320,12 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this item?')) {
       try {
-        const { error } = await supabase
-          .from('items')
-          .delete()
-          .eq('id', id);
-
-        if (error) throw error;
-        await fetchItems();
+        const allItems: any[] = JSON.parse(localStorage.getItem('pos_items') || '[]');
+        localStorage.setItem('pos_items', JSON.stringify(allItems.filter(i => i.id !== id)));
+        fetchItems();
       } catch (error) {
         console.error('Error deleting item:', error);
         alert('Failed to delete item');
