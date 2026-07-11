@@ -79,6 +79,7 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [showSupplierModal, setShowSupplierModal] = useState<string | null>(null);
   const [categories, setCategories] = useState<Array<{ id: string; name: string; description: string; is_active: boolean }>>([]);
+  const [suppliersList, setSuppliersList] = useState<Array<{ supplierId: string; supplierName: string; active: boolean }>>([]);
   const [showCategoriesPage, setShowCategoriesPage] = useState(false);
   const [arabicModified, setArabicModified] = useState(false);
   const [formData, setFormData] = useState({
@@ -113,6 +114,7 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
   useEffect(() => {
     fetchItems();
     fetchCategories();
+    fetchSuppliersList();
   }, []);
 
   const fetchItems = () => {
@@ -126,6 +128,20 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
       console.error('Error fetching items:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSuppliersList = () => {
+    try {
+      const stored = localStorage.getItem('pos_suppliers');
+      const data: any[] = stored ? JSON.parse(stored) : [];
+      setSuppliersList(data.map(s => ({
+        supplierId: s.id,
+        supplierName: s.name,
+        active: s.status === 'active' || s.is_active !== false
+      })));
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
     }
   };
 
@@ -366,7 +382,7 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
   };
 
   const handleSupplierSelect = (supplierId: string, selectedSupplierId: string) => {
-    const selectedSupplier = mockSuppliers.find(s => s.supplierId === selectedSupplierId);
+    const selectedSupplier = suppliersList.find(s => s.supplierId === selectedSupplierId);
     if (selectedSupplier) {
       setFormData(prev => ({
         ...prev,
@@ -1075,7 +1091,7 @@ export default function ItemMaster({ onBack }: ItemMasterProps) {
                               disabled={supplier.isMarketRange}
                             >
                               <option value="">Select Supplier</option>
-                              {mockSuppliers.filter(s => s.active).map(s => (
+                              {suppliersList.filter(s => s.active).map(s => (
                                 <option key={s.supplierId} value={s.supplierId}>
                                   {s.supplierName}
                                 </option>
