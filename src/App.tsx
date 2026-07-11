@@ -30,6 +30,7 @@ import Finance from './components/Finance';
 import ClientRelations from './components/ClientRelations';
 import TaskManagement from './components/TaskManagement';
 import SupplierManagement from './components/SupplierManagement';
+import POSSystem from './components/POSSystem';
 import ComboManagement from './components/ComboManagement';
 import ComboProfitReport from './components/ComboProfitReport';
 import FeaturesHub from './components/FeaturesHub';
@@ -94,12 +95,7 @@ function AppContent() {
       case 'hr-management':
         return <HRManagement />;
       case 'pos':
-        return (
-          <ComingSoon
-            title="Point of Sale"
-            description="Complete POS system with product scanning, payment processing, and receipt generation."
-          />
-        );
+        return <POSSystem />;
       case 'inventory':
         return <Inventory />;
       case 'procurement':
