@@ -51,8 +51,19 @@ import {
   Client,
   LoyaltyCard as LoyaltyCardType
 } from '../types';
-import { supabase } from '../lib/supabase';
 import { lookupItemByBarcode } from '../lib/barcodeHelpers';
+
+// localStorage helpers
+const lsGet = <T,>(key: string): T[] => {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+};
+const lsSet = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+const lsAppend = <T,>(key: string, item: T): T[] => {
+  const arr = lsGet<T>(key);
+  arr.push(item);
+  lsSet(key, arr);
+  return arr;
+};
 import HoldOrdersModal from './HoldOrdersModal';
 import CustomerInfoModal from './CustomerInfoModal';
 import ClientLookupModal from './ClientLookupModal';
@@ -111,17 +122,11 @@ const mockRecipeIngredients: Record<string, RecipeIngredient[]> = {};
 // Mock recipes data (from RecipeMaker)
 const mockRecipes: any[] = [];
 
-// Fetch POS products from database
+// Fetch POS products from localStorage
 const fetchPOSProducts = async (): Promise<Product[]> => {
   try {
-    const { data: items, error } = await supabase
-      .from('items')
-      .select('*')
-      .eq('show_in_pos', true);
-
-    if (error) throw error;
-
-    return (items || []).map(item => ({
+    const items = lsGet<any>('pos_items').filter((i: any) => i.show_in_pos);
+    return items.map(item => ({
       id: item.id,
       name: item.name,
       sku: item.sku,
@@ -1049,17 +1054,11 @@ export default function POSSystem() {
       setProducts(fetchedProducts);
       setProductsLoading(false);
     };
-    const loadBranches = async () => {
-      const { data, error } = await supabase
-        .from('branches')
-        .select('*')
-        .eq('is_active', true)
-        .order('branch_name');
-      if (!error && data) {
-        setBranches(data);
-        if (data.length > 0) {
-          setSelectedBranchId(data[0].id);
-        }
+    const loadBranches = () => {
+      const data = lsGet<any>('pos_branches').filter((b: any) => b.is_active);
+      setBranches(data);
+      if (data.length > 0) {
+        setSelectedBranchId(data[0].id);
       }
     };
     loadProducts();
@@ -1067,55 +1066,36 @@ export default function POSSystem() {
     loadTransactions();
   }, []);
 
-  const loadTransactions = async () => {
+  const loadTransactions = () => {
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          transaction_items (
-            id,
-            item_name,
-            item_sku,
-            quantity,
-            unit_price,
-            line_total,
-            returned_quantity,
-            exchanged_quantity
-          )
-        `)
-        .eq('status', 'completed')
-        .order('transaction_date', { ascending: false })
-        .limit(100);
+      const rawTxns = lsGet<any>('pos_transactions')
+        .filter((tx: any) => tx.status === 'completed')
+        .sort((a: any, b: any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
+        .slice(0, 100);
 
-      if (error) {
-        console.error('Error loading transactions:', error);
-        return;
-      }
+      const allItems = lsGet<any>('pos_transaction_items');
 
-      if (data) {
-        const formattedTransactions: Transaction[] = data.map(tx => ({
-          id: tx.id,
-          invoiceNumber: tx.invoice_number,
-          date: tx.transaction_date,
-          cashierName: tx.cashier_name,
-          items: tx.transaction_items.map((item: any) => ({
-            itemId: item.id,
-            itemName: item.item_name,
-            itemSku: item.item_sku,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineTotal: parseFloat(item.line_total),
-            returnedQty: item.returned_quantity,
-            exchangedQty: item.exchanged_quantity
-          })),
-          subtotal: parseFloat(tx.subtotal),
-          discount: parseFloat(tx.discount),
-          total: parseFloat(tx.total),
-          status: 'completed' as const
-        }));
-        setTransactions(formattedTransactions);
-      }
+      const formattedTransactions: Transaction[] = rawTxns.map(tx => ({
+        id: tx.id,
+        invoiceNumber: tx.invoice_number,
+        date: tx.transaction_date,
+        cashierName: tx.cashier_name,
+        items: (allItems.filter((i: any) => i.transaction_id === tx.id) || []).map((item: any) => ({
+          itemId: item.id,
+          itemName: item.item_name,
+          itemSku: item.item_sku,
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unit_price),
+          lineTotal: parseFloat(item.line_total),
+          returnedQty: item.returned_quantity,
+          exchangedQty: item.exchanged_quantity
+        })),
+        subtotal: parseFloat(tx.subtotal),
+        discount: parseFloat(tx.discount),
+        total: parseFloat(tx.total),
+        status: 'completed' as const
+      }));
+      setTransactions(formattedTransactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
     }
@@ -1294,32 +1274,12 @@ export default function POSSystem() {
 
   useEffect(() => {
     fetchHeldOrdersCount();
-
-    const subscription = supabase
-      .channel('held_orders_count_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'held_orders' },
-        () => {
-          fetchHeldOrdersCount();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
-  const fetchHeldOrdersCount = async () => {
+  const fetchHeldOrdersCount = () => {
     try {
-      const { count, error } = await supabase
-        .from('held_orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
-
-      if (error) throw error;
-      setHeldOrdersCount(count || 0);
+      const count = lsGet<any>('pos_held_orders').filter((o: any) => o.status === 'active').length;
+      setHeldOrdersCount(count);
     } catch (error) {
       console.error('Error fetching held orders count:', error);
     }
@@ -1333,12 +1293,11 @@ export default function POSSystem() {
     setShowCustomerInfoModal(true);
   };
 
-  const saveHeldOrder = async (customerInfo: any = {}, clientFromModal?: any) => {
+  const saveHeldOrder = (customerInfo: any = {}, clientFromModal?: any) => {
     if (!user) return;
 
     try {
-      const { data: holdNumberData } = await supabase.rpc('generate_hold_number');
-
+      const holdNumberData = 'HOLD-' + Date.now();
       const clientToSave = clientFromModal || selectedClient;
 
       const heldOrderData: CreateHeldOrderData = {
@@ -1358,19 +1317,15 @@ export default function POSSystem() {
         order_notes: notes
       };
 
-      const { data, error } = await supabase
-        .from('held_orders')
-        .insert({
-          ...heldOrderData,
-          hold_number: holdNumberData,
-          status: 'active',
-          client_id: clientToSave?.id || null,
-          client_data: clientToSave || null
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      lsAppend('pos_held_orders', {
+        ...heldOrderData,
+        id: Date.now().toString(),
+        hold_number: holdNumberData,
+        status: 'active',
+        client_id: clientToSave?.id || null,
+        client_data: clientToSave || null,
+        created_at: new Date().toISOString()
+      });
 
       setShowCustomerInfoModal(false);
       alert(`Order held successfully! Hold Number: ${holdNumberData}`);
@@ -1402,20 +1357,20 @@ export default function POSSystem() {
     alert(`Order ${order.hold_number} resumed successfully!`);
   };
 
-  const updateOrderStatus = async (orderId: string, status: string, resumedBy?: string) => {
+  const updateOrderStatus = (orderId: string, status: string, resumedBy?: string) => {
     try {
-      const updateData: any = { status };
-      if (status === 'resumed') {
-        updateData.resumed_at = new Date().toISOString();
-        updateData.resumed_by = resumedBy;
-      }
-
-      const { error } = await supabase
-        .from('held_orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (error) throw error;
+      const all = lsGet<any>('pos_held_orders');
+      lsSet('pos_held_orders', all.map((o: any) => {
+        if (o.id === orderId) {
+          const updated: any = { ...o, status };
+          if (status === 'resumed') {
+            updated.resumed_at = new Date().toISOString();
+            updated.resumed_by = resumedBy;
+          }
+          return updated;
+        }
+        return o;
+      }));
       fetchHeldOrdersCount();
     } catch (error) {
       console.error('Error updating order status:', error);
@@ -1517,39 +1472,31 @@ export default function POSSystem() {
           total
         });
 
-        // Save main transaction to database
-        // Note: cashier_id is set to null since mock auth uses string IDs, not UUIDs
-        const { data: transactionData, error: transactionError } = await supabase
-          .from('transactions')
-          .insert({
-            invoice_number: invoiceNumber,
-            transaction_date: new Date().toISOString(),
-            cashier_id: null,
-            cashier_name: cashierName,
-            branch_id: selectedBranchId || null,
-            subtotal,
-            discount: discountAmount,
-            tax: vatAmount,
-            vat_inclusive: vatInclusiveTotal,
-            vat_exclusive: vatExclusiveTotal,
-            total,
-            status: 'completed'
-          })
-          .select()
-          .single();
-
-        if (transactionError) {
-          console.error('Error saving transaction:', transactionError);
-          console.error('Error details:', JSON.stringify(transactionError, null, 2));
-          alert(`Failed to save transaction: ${transactionError.message || 'Please try again.'}`);
-          return;
-        }
+        // Save main transaction to localStorage
+        const transactionId = Date.now().toString();
+        const transactionData = {
+          id: transactionId,
+          invoice_number: invoiceNumber,
+          transaction_date: new Date().toISOString(),
+          cashier_id: null,
+          cashier_name: cashierName,
+          branch_id: selectedBranchId || null,
+          subtotal,
+          discount: discountAmount,
+          tax: vatAmount,
+          vat_inclusive: vatInclusiveTotal,
+          vat_exclusive: vatExclusiveTotal,
+          total,
+          status: 'completed'
+        };
+        lsAppend('pos_transactions', transactionData);
 
         console.log('Transaction saved successfully:', transactionData);
 
         // Save transaction items
         const transactionItems = cart.map(item => ({
-          transaction_id: transactionData.id,
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          transaction_id: transactionId,
           item_id: item.productId,
           item_name: item.name,
           item_sku: item.sku,
@@ -1559,31 +1506,20 @@ export default function POSSystem() {
           returned_quantity: 0,
           exchanged_quantity: 0
         }));
-
-        const { error: itemsError } = await supabase
-          .from('transaction_items')
-          .insert(transactionItems);
-
-        if (itemsError) {
-          console.error('Error saving transaction items:', itemsError);
-        }
+        const existingTxItems = lsGet<any>('pos_transaction_items');
+        lsSet('pos_transaction_items', [...existingTxItems, ...transactionItems]);
 
         // Save payments
         const paymentRecords = payments.map(payment => ({
-          transaction_id: transactionData.id,
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          transaction_id: transactionId,
           payment_method: payment.method,
           amount: payment.amount,
           payment_date: new Date().toISOString(),
           is_voided: false
         }));
-
-        const { error: paymentsError } = await supabase
-          .from('payments')
-          .insert(paymentRecords);
-
-        if (paymentsError) {
-          console.error('Error saving payments:', paymentsError);
-        }
+        const existingPayments = lsGet<any>('pos_payments');
+        lsSet('pos_payments', [...existingPayments, ...paymentRecords]);
 
         // Deduct inventory locally for each sold item
         const localStock: Record<string, number> = JSON.parse(localStorage.getItem('pos_stock_levels') || '{}');
@@ -1602,7 +1538,7 @@ export default function POSSystem() {
           const cashSales: any[] = JSON.parse(localStorage.getItem('pos_cash_sales') || '[]');
           cashSales.push({
             id: Date.now().toString(),
-            transaction_id: transactionData.id,
+            transaction_id: transactionId,
             invoice_number: invoiceNumber,
             amount: cashTotal,
             cashier_name: cashierName,
@@ -1611,26 +1547,10 @@ export default function POSSystem() {
           localStorage.setItem('pos_cash_sales', JSON.stringify(cashSales));
         }
 
-        // Save completed transaction locally for cross-module access
-        const localTransactions: any[] = JSON.parse(localStorage.getItem('pos_transactions') || '[]');
-        localTransactions.push({
-          id: transactionData.id,
-          invoice_number: invoiceNumber,
-          transaction_date: new Date().toISOString(),
-          cashier_name: cashierName,
-          subtotal,
-          discount: discountAmount,
-          tax: vatAmount,
-          total,
-          status: 'completed',
-          items: cart.map(ci => ({ item_id: ci.productId, item_name: ci.name, item_sku: ci.sku, quantity: ci.quantity, unit_price: ci.price, line_total: ci.lineTotal })),
-          payments: payments.map(p => ({ payment_method: p.method, amount: p.amount }))
-        });
-        localStorage.setItem('pos_transactions', JSON.stringify(localTransactions));
-
         // Handle client-specific logic
         if (selectedClient) {
-          await supabase.from('client_orders').insert({
+          lsAppend('pos_client_orders', {
+            id: Date.now().toString(),
             client_id: selectedClient.id,
             order_number: invoiceNumber,
             order_date: new Date().toISOString(),
@@ -1641,16 +1561,16 @@ export default function POSSystem() {
             payment_method: payments.length > 0 ? payments[0].method : 'cash',
             cashier_name: cashierName,
             loyalty_stamps_earned: coffeeCount,
-            notes
+            notes,
+            created_at: new Date().toISOString()
           });
 
-          await supabase
-            .from('clients')
-            .update({
-              total_visits: selectedClient.total_visits + 1,
-              total_spent: selectedClient.total_spent + total
-            })
-            .eq('id', selectedClient.id);
+          // Update client totals in localStorage
+          const allClients = lsGet<any>('pos_clients');
+          lsSet('pos_clients', allClients.map((c: any) => c.id === selectedClient.id
+            ? { ...c, total_visits: (c.total_visits || 0) + 1, total_spent: (c.total_spent || 0) + total }
+            : c
+          ));
 
           if (selectedClient.loyalty_card && coffeeCount > 0) {
             const newStamps = selectedClient.loyalty_card.current_stamps + coffeeCount;
@@ -1663,16 +1583,14 @@ export default function POSSystem() {
               remainingStamps = newStamps % stampsRequired;
             }
 
-            await supabase
-              .from('loyalty_cards')
-              .update({
-                current_stamps: remainingStamps,
-                completed_cards: completedCards,
-                last_stamp_at: new Date().toISOString()
-              })
-              .eq('id', selectedClient.loyalty_card.id);
+            const allCards = lsGet<any>('pos_loyalty_cards');
+            lsSet('pos_loyalty_cards', allCards.map((c: any) => c.id === selectedClient.loyalty_card!.id
+              ? { ...c, current_stamps: remainingStamps, completed_cards: completedCards, last_stamp_at: new Date().toISOString() }
+              : c
+            ));
 
-            await supabase.from('loyalty_transactions').insert({
+            lsAppend('pos_loyalty_transactions', {
+              id: Date.now().toString(),
               loyalty_card_id: selectedClient.loyalty_card.id,
               client_id: selectedClient.id,
               transaction_id: invoiceNumber,
@@ -1752,37 +1670,31 @@ export default function POSSystem() {
     try {
       console.log('Charging to account for client:', selectedClient.id);
 
-      // Save main transaction to database
-      const { data: transactionData, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          invoice_number: invoiceNumber,
-          transaction_date: new Date().toISOString(),
-          cashier_id: null,
-          cashier_name: cashierName,
-          branch_id: selectedBranchId || null,
-          subtotal,
-          discount: discountAmount,
-          tax: vatAmount,
-          vat_inclusive: vatInclusiveTotal,
-          vat_exclusive: vatExclusiveTotal,
-          total,
-          status: 'completed'
-        })
-        .select()
-        .single();
-
-      if (transactionError) {
-        console.error('Error saving transaction:', transactionError);
-        alert(`Failed to save transaction: ${transactionError.message || 'Please try again.'}`);
-        return;
-      }
+      // Save main transaction to localStorage
+      const transactionId = Date.now().toString();
+      const transactionData = {
+        id: transactionId,
+        invoice_number: invoiceNumber,
+        transaction_date: new Date().toISOString(),
+        cashier_id: null,
+        cashier_name: cashierName,
+        branch_id: selectedBranchId || null,
+        subtotal,
+        discount: discountAmount,
+        tax: vatAmount,
+        vat_inclusive: vatInclusiveTotal,
+        vat_exclusive: vatExclusiveTotal,
+        total,
+        status: 'completed'
+      };
+      lsAppend('pos_transactions', transactionData);
 
       console.log('Transaction saved successfully:', transactionData);
 
       // Save transaction items
       const transactionItems = cart.map(item => ({
-        transaction_id: transactionData.id,
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        transaction_id: transactionId,
         item_id: item.productId,
         item_name: item.name,
         item_sku: item.sku,
@@ -1792,50 +1704,30 @@ export default function POSSystem() {
         returned_quantity: 0,
         exchanged_quantity: 0
       }));
-
-      const { error: itemsError } = await supabase
-        .from('transaction_items')
-        .insert(transactionItems);
-
-      if (itemsError) {
-        console.error('Error saving transaction items:', itemsError);
-      }
+      const existingTxItems2 = lsGet<any>('pos_transaction_items');
+      lsSet('pos_transaction_items', [...existingTxItems2, ...transactionItems]);
 
       // Save payment as "account" method
-      const { error: paymentsError } = await supabase
-        .from('payments')
-        .insert({
-          transaction_id: transactionData.id,
-          payment_method: 'account',
-          amount: total,
-          payment_date: new Date().toISOString(),
-          is_voided: false
-        });
-
-      if (paymentsError) {
-        console.error('Error saving payment:', paymentsError);
-      }
+      lsAppend('pos_payments', {
+        id: Date.now().toString(),
+        transaction_id: transactionId,
+        payment_method: 'account',
+        amount: total,
+        payment_date: new Date().toISOString(),
+        is_voided: false
+      });
 
       // Update client's debt and total spent
       const newDebt = (selectedClient.current_debt || 0) + total;
-
-      const { error: clientError } = await supabase
-        .from('clients')
-        .update({
-          current_debt: newDebt,
-          total_spent: (selectedClient.total_spent || 0) + total,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedClient.id);
-
-      if (clientError) {
-        console.error('Error updating client debt:', clientError);
-        alert('Transaction saved but failed to update customer account. Please check manually.');
-        return;
-      }
+      const allClients2 = lsGet<any>('pos_clients');
+      lsSet('pos_clients', allClients2.map((c: any) => c.id === selectedClient.id
+        ? { ...c, current_debt: newDebt, total_spent: (c.total_spent || 0) + total, updated_at: new Date().toISOString() }
+        : c
+      ));
 
       // Save client order
-      await supabase.from('client_orders').insert({
+      lsAppend('pos_client_orders', {
+        id: Date.now().toString() + '1',
         client_id: selectedClient.id,
         order_number: invoiceNumber,
         order_date: new Date().toISOString(),
@@ -1846,7 +1738,8 @@ export default function POSSystem() {
         payment_method: 'account',
         cashier_name: cashierName,
         loyalty_stamps_earned: coffeeCount,
-        notes
+        notes,
+        created_at: new Date().toISOString()
       });
 
       // Handle loyalty card if applicable
@@ -1861,16 +1754,14 @@ export default function POSSystem() {
           remainingStamps = newStamps % stampsRequired;
         }
 
-        await supabase
-          .from('loyalty_cards')
-          .update({
-            current_stamps: remainingStamps,
-            completed_cards: completedCards,
-            last_stamp_at: new Date().toISOString()
-          })
-          .eq('id', selectedClient.loyalty_card.id);
+        const allCards2 = lsGet<any>('pos_loyalty_cards');
+        lsSet('pos_loyalty_cards', allCards2.map((c: any) => c.id === selectedClient.loyalty_card!.id
+          ? { ...c, current_stamps: remainingStamps, completed_cards: completedCards, last_stamp_at: new Date().toISOString() }
+          : c
+        ));
 
-        await supabase.from('loyalty_transactions').insert({
+        lsAppend('pos_loyalty_transactions', {
+          id: Date.now().toString() + '2',
           loyalty_card_id: selectedClient.loyalty_card.id,
           client_id: selectedClient.id,
           transaction_id: invoiceNumber,
@@ -1983,72 +1874,51 @@ export default function POSSystem() {
         processedAt: new Date().toISOString()
       };
 
-      // Save return to database
-      const { data: returnDbData, error: returnError } = await supabase
-        .from('returns')
-        .insert({
-          return_number: returnNumber,
-          transaction_id: returnData.originalTransactionId,
-          invoice_number: returnData.originalInvoiceNumber,
-          return_date: new Date().toISOString(),
-          total_refund: returnData.totalRefund,
-          refund_method: returnData.refundMethod,
-          reason: returnData.reason,
-          processed_by: returnData.processedBy,
-          approved_by: returnData.approvedBy,
-          status: 'completed'
-        })
-        .select()
-        .single();
+      // Save return to localStorage
+      const returnId = Date.now().toString();
+      const returnDbData = {
+        id: returnId,
+        return_number: returnNumber,
+        transaction_id: returnData.originalTransactionId,
+        invoice_number: returnData.originalInvoiceNumber,
+        return_date: new Date().toISOString(),
+        total_refund: returnData.totalRefund,
+        refund_method: returnData.refundMethod,
+        reason: returnData.reason,
+        processed_by: returnData.processedBy,
+        approved_by: returnData.approvedBy,
+        status: 'completed',
+        created_at: new Date().toISOString()
+      };
+      lsAppend('pos_returns', returnDbData);
 
-      if (returnError) {
-        console.error('Error saving return:', returnError);
-        alert('Failed to save return. Please try again.');
-        return;
-      }
-
-      // Update transaction items with returned quantities
+      // Update transaction items with returned quantities in localStorage
+      const allTxItems = lsGet<any>('pos_transaction_items');
       for (const item of returnData.items) {
-        // First get the current returned_quantity
-        const { data: currentItem } = await supabase
-          .from('transaction_items')
-          .select('returned_quantity')
-          .eq('transaction_id', returnData.originalTransactionId)
-          .eq('item_sku', item.itemSku)
-          .single();
-
+        const currentItem = allTxItems.find((ti: any) =>
+          ti.transaction_id === returnData.originalTransactionId && ti.item_sku === item.itemSku
+        );
         const newReturnedQuantity = (currentItem?.returned_quantity || 0) + item.returnQuantity;
-
-        const { error: itemError } = await supabase
-          .from('transaction_items')
-          .update({
-            returned_quantity: newReturnedQuantity
-          })
-          .eq('transaction_id', returnData.originalTransactionId)
-          .eq('item_sku', item.itemSku);
-
-        if (itemError) {
-          console.error('Error updating transaction item:', itemError);
-        }
+        lsSet('pos_transaction_items', allTxItems.map((ti: any) =>
+          ti.transaction_id === returnData.originalTransactionId && ti.item_sku === item.itemSku
+            ? { ...ti, returned_quantity: newReturnedQuantity }
+            : ti
+        ));
       }
 
       // Save return items
       const returnItems = returnData.items.map((item: any) => ({
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
         return_id: returnDbData.id,
         item_name: item.itemName,
         item_sku: item.itemSku,
         quantity: item.returnQuantity,
         unit_price: item.unitPrice,
-        line_total: item.refundAmount
+        line_total: item.refundAmount,
+        created_at: new Date().toISOString()
       }));
-
-      const { error: itemsError } = await supabase
-        .from('return_items')
-        .insert(returnItems);
-
-      if (itemsError) {
-        console.error('Error saving return items:', itemsError);
-      }
+      const existingReturnItems = lsGet<any>('pos_return_items');
+      lsSet('pos_return_items', [...existingReturnItems, ...returnItems]);
 
       setReturns(prev => [...prev, returnRecord]);
 

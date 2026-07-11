@@ -101,12 +101,10 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
     }
   };
 
-  const fetchUsers = async () => {
+  const fetchUsers = () => {
     try {
-      const { data, error } = await supabase.rpc('get_all_users');
-      if (!error && data) {
-        setUsers(data);
-      }
+      const stored = localStorage.getItem('pos_users');
+      if (stored) setUsers(JSON.parse(stored));
     } catch (error) {
       console.error('Error fetching users:', error);
     }

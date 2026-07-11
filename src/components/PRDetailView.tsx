@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, User, Building2, FileText, Upload, Download, Trash2, Clock, MessageSquare } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+
+// localStorage helpers
+const lsGet = <T,>(key: string): T[] => {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+};
+const lsSet = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+const lsAppend = <T,>(key: string, item: T): T[] => {
+  const arr = lsGet<T>(key);
+  arr.push(item);
+  lsSet(key, arr);
+  return arr;
+};
 import { getStatusLabel, getStatusColor, getActionLabel, getActionIcon } from '../lib/prHelpers';
 
 interface PRDetailViewProps {
@@ -48,23 +59,10 @@ export default function PRDetailView({ prId, onBack, onRefresh, onCreatePO }: PR
     fetchAttachments();
   }, [prId]);
 
-  const fetchPRDetails = async () => {
+  const fetchPRDetails = () => {
     try {
-      const { data, error } = await supabase
-        .from('purchase_requisitions')
-        .select(`
-          *,
-          requester:requester_id(username, email),
-          branch:branch_id(name, code),
-          items:purchase_requisition_items(
-            *,
-            item:item_id(name, sku)
-          )
-        `)
-        .eq('id', prId)
-        .single();
-
-      if (error) throw error;
+      const prs = lsGet<any>('pos_purchase_requisitions');
+      const data = prs.find((p: any) => p.id === prId) || null;
       setPr(data);
     } catch (error) {
       console.error('Error fetching PR:', error);
@@ -73,73 +71,50 @@ export default function PRDetailView({ prId, onBack, onRefresh, onCreatePO }: PR
     }
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = () => {
     try {
-      const { data, error } = await supabase
-        .from('pr_history')
-        .select(`
-          *,
-          performer:performed_by(username)
-        `)
-        .eq('pr_id', prId)
-        .order('performed_at', { ascending: false });
-
-      if (error) throw error;
-      setHistory(data || []);
+      const data = lsGet<HistoryEntry>('pos_pr_history')
+        .filter((h: any) => h.pr_id === prId)
+        .sort((a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime());
+      setHistory(data);
     } catch (error) {
       console.error('Error fetching history:', error);
     }
   };
 
-  const fetchAttachments = async () => {
+  const fetchAttachments = () => {
     try {
-      const { data, error } = await supabase
-        .from('pr_attachments')
-        .select(`
-          *,
-          uploader:uploaded_by(username)
-        `)
-        .eq('pr_id', prId)
-        .order('uploaded_at', { ascending: false });
-
-      if (error) throw error;
-      setAttachments(data || []);
+      const data = lsGet<Attachment>('pos_pr_attachments')
+        .filter((a: any) => a.pr_id === prId)
+        .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
+      setAttachments(data);
     } catch (error) {
       console.error('Error fetching attachments:', error);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
     setUploading(true);
     try {
       for (const file of Array.from(files)) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${prId}/${Date.now()}_${file.name}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('pr-attachments')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from('pr-attachments')
-          .getPublicUrl(fileName);
-
-        await supabase.from('pr_attachments').insert({
+        // Storage upload skipped — save filename only
+        lsAppend('pos_pr_attachments', {
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
           pr_id: prId,
           file_name: file.name,
-          file_url: urlData.publicUrl,
+          file_url: '',  // no storage URL available
           file_type: file.type,
           file_size: file.size,
-          uploaded_by: user?.id
+          uploaded_by: user?.id || 'System',
+          uploaded_at: new Date().toISOString(),
+          uploader: { username: user?.email || 'System' }
         });
       }
 
-      alert('Files uploaded successfully!');
+      alert('Files saved successfully!');
       fetchAttachments();
       event.target.value = '';
     } catch (error) {
@@ -150,14 +125,13 @@ export default function PRDetailView({ prId, onBack, onRefresh, onCreatePO }: PR
     }
   };
 
-  const handleDeleteAttachment = async (attachmentId: string, fileUrl: string) => {
+  const handleDeleteAttachment = (attachmentId: string, _fileUrl: string) => {
     if (!confirm('Are you sure you want to delete this attachment?')) return;
 
     try {
-      const filePath = fileUrl.split('/pr-attachments/')[1];
-      await supabase.storage.from('pr-attachments').remove([filePath]);
-
-      await supabase.from('pr_attachments').delete().eq('id', attachmentId);
+      // Storage removal skipped
+      const all = lsGet<Attachment>('pos_pr_attachments');
+      lsSet('pos_pr_attachments', all.filter((a: any) => a.id !== attachmentId));
 
       alert('Attachment deleted successfully!');
       fetchAttachments();

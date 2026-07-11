@@ -259,32 +259,12 @@ export default function HRManagement() {
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        alert('You must be logged in to reset passwords');
-        return;
+      const users: any[] = JSON.parse(localStorage.getItem('pos_users') || '[]');
+      const idx = users.findIndex((u: any) => u.id === userId);
+      if (idx !== -1) {
+        users[idx].password = password;
+        localStorage.setItem('pos_users', JSON.stringify(users));
       }
-
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-user-password`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          newPassword: password
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to reset password');
-      }
-
       alert('Password reset successfully!');
       setShowEditModal(false);
       setEditingUser(null);

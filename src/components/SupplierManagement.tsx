@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+
+// localStorage helpers
+const lsGet = <T,>(key: string): T[] => {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+};
+const lsSet = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+const lsAppend = <T,>(key: string, item: T): T[] => {
+  const arr = lsGet<T>(key);
+  arr.push(item);
+  lsSet(key, arr);
+  return arr;
+};
 import {
   Building2, Plus, Search, Edit, Eye, Phone, Mail, MapPin, ArrowLeft,
   DollarSign, FileText, CheckCircle, Clock, AlertCircle, X, Filter,
@@ -131,16 +142,11 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     fetchSuppliers();
   }, []);
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      setSuppliers(data || []);
+      const data = lsGet<Supplier>('pos_suppliers').sort((a, b) => a.name.localeCompare(b.name));
+      setSuppliers(data);
     } catch (error) {
       console.error('Error fetching suppliers:', error);
     } finally {
@@ -148,33 +154,23 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     }
   };
 
-  const fetchSupplierDetails = async (supplierId: string) => {
+  const fetchSupplierDetails = (supplierId: string) => {
     try {
-      const [invoicesRes, paymentsRes, posRes] = await Promise.all([
-        supabase
-          .from('supplier_invoices')
-          .select(`*, purchase_orders(po_number)`)
-          .eq('supplier_id', supplierId)
-          .order('invoice_date', { ascending: false }),
-        supabase
-          .from('supplier_payments')
-          .select(`*, supplier_invoices(invoice_number)`)
-          .eq('supplier_id', supplierId)
-          .order('payment_date', { ascending: false }),
-        supabase
-          .from('purchase_orders')
-          .select(`*, branches(name)`)
-          .eq('supplier_id', supplierId)
-          .order('order_date', { ascending: false })
-      ]);
+      const allInvoices = lsGet<SupplierInvoice>('pos_supplier_invoices')
+        .filter(i => i.supplier_id === supplierId)
+        .sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime());
 
-      if (invoicesRes.error) throw invoicesRes.error;
-      if (paymentsRes.error) throw paymentsRes.error;
-      if (posRes.error) throw posRes.error;
+      const allPayments = lsGet<SupplierPayment>('pos_supplier_payments')
+        .filter(p => p.supplier_id === supplierId)
+        .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
 
-      setInvoices(invoicesRes.data || []);
-      setPayments(paymentsRes.data || []);
-      setPurchaseOrders(posRes.data || []);
+      const allPOs = lsGet<PurchaseOrder>('pos_purchase_orders')
+        .filter(p => (p as any).supplier_id === supplierId)
+        .sort((a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime());
+
+      setInvoices(allInvoices);
+      setPayments(allPayments);
+      setPurchaseOrders(allPOs);
     } catch (error) {
       console.error('Error fetching supplier details:', error);
     }
@@ -185,6 +181,7 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     fetchSupplierDetails(supplier.id);
     setView('detail');
   };
+
 
   const handleEditSupplier = (supplier: Supplier) => {
     if (!canEdit) {
@@ -239,7 +236,7 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const handleSaveSupplier = async () => {
+  const handleSaveSupplier = () => {
     if (!formData.name || !formData.phone) {
       alert('Please fill in Supplier Name and Phone (required fields)');
       return;
@@ -252,19 +249,19 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
 
     try {
       if (view === 'add') {
-        const { error } = await supabase
-          .from('suppliers')
-          .insert([formData]);
-        if (error) throw error;
+        lsAppend('pos_suppliers', {
+          ...formData,
+          id: Date.now().toString(),
+          total_outstanding: 0,
+          last_po_date: null,
+          created_at: new Date().toISOString()
+        });
       } else if (view === 'edit' && selectedSupplier) {
-        const { error } = await supabase
-          .from('suppliers')
-          .update(formData)
-          .eq('id', selectedSupplier.id);
-        if (error) throw error;
+        const all = lsGet<Supplier>('pos_suppliers');
+        lsSet('pos_suppliers', all.map(s => s.id === selectedSupplier.id ? { ...s, ...formData } : s));
       }
 
-      await fetchSuppliers();
+      fetchSuppliers();
       setView('list');
       setSelectedSupplier(null);
     } catch (error: any) {
@@ -273,26 +270,21 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     }
   };
 
-  const handleToggleSupplierStatus = async () => {
+  const handleToggleSupplierStatus = () => {
     if (!selectedSupplier || !canEdit) return;
 
     try {
-      const { error } = await supabase
-        .from('suppliers')
-        .update({ is_active: !selectedSupplier.is_active })
-        .eq('id', selectedSupplier.id);
-
-      if (error) throw error;
-
+      const all = lsGet<Supplier>('pos_suppliers');
+      lsSet('pos_suppliers', all.map(s => s.id === selectedSupplier.id ? { ...s, is_active: !s.is_active } : s));
       setSelectedSupplier({ ...selectedSupplier, is_active: !selectedSupplier.is_active });
-      await fetchSuppliers();
+      fetchSuppliers();
     } catch (error) {
       console.error('Error updating supplier status:', error);
       alert('Failed to update supplier status');
     }
   };
 
-  const handleAddInvoice = async () => {
+  const handleAddInvoice = () => {
     if (!selectedSupplier || !canEdit) return;
 
     if (!invoiceForm.invoice_number || !invoiceForm.invoice_amount) {
@@ -301,21 +293,22 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     }
 
     try {
-      const { error } = await supabase
-        .from('supplier_invoices')
-        .insert([{
-          supplier_id: selectedSupplier.id,
-          invoice_number: invoiceForm.invoice_number,
-          po_id: invoiceForm.po_id || null,
-          invoice_date: invoiceForm.invoice_date,
-          invoice_amount: parseFloat(invoiceForm.invoice_amount),
-          notes: invoiceForm.notes
-        }]);
+      lsAppend('pos_supplier_invoices', {
+        id: Date.now().toString(),
+        supplier_id: selectedSupplier.id,
+        invoice_number: invoiceForm.invoice_number,
+        po_id: invoiceForm.po_id || null,
+        invoice_date: invoiceForm.invoice_date,
+        invoice_amount: parseFloat(invoiceForm.invoice_amount),
+        paid_amount: 0,
+        remaining_amount: parseFloat(invoiceForm.invoice_amount),
+        status: 'unpaid',
+        notes: invoiceForm.notes || null,
+        created_at: new Date().toISOString()
+      });
 
-      if (error) throw error;
-
-      await fetchSupplierDetails(selectedSupplier.id);
-      await fetchSuppliers();
+      fetchSupplierDetails(selectedSupplier.id);
+      fetchSuppliers();
       setShowInvoiceModal(false);
       setInvoiceForm({
         invoice_number: '',
@@ -330,7 +323,7 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     }
   };
 
-  const handleAddPayment = async () => {
+  const handleAddPayment = () => {
     if (!selectedSupplier || !canEdit) return;
 
     if (!paymentForm.amount) {
@@ -339,26 +332,24 @@ export default function SupplierManagement({ onBack }: SupplierManagementProps) 
     }
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const currentUser = JSON.parse(localStorage.getItem('pos_current_user') || 'null');
 
-      const { error } = await supabase
-        .from('supplier_payments')
-        .insert([{
-          supplier_id: selectedSupplier.id,
-          invoice_id: paymentForm.invoice_id || null,
-          amount: parseFloat(paymentForm.amount),
-          payment_date: paymentForm.payment_date,
-          payment_method: paymentForm.payment_method,
-          payment_reference: paymentForm.payment_reference,
-          notes: paymentForm.notes,
-          status: 'paid',
-          created_by: userData.user?.id
-        }]);
+      lsAppend('pos_supplier_payments', {
+        id: Date.now().toString(),
+        supplier_id: selectedSupplier.id,
+        invoice_id: paymentForm.invoice_id || null,
+        amount: parseFloat(paymentForm.amount),
+        payment_date: paymentForm.payment_date,
+        payment_method: paymentForm.payment_method,
+        payment_reference: paymentForm.payment_reference,
+        notes: paymentForm.notes,
+        status: 'paid',
+        created_by: currentUser?.id || 'System',
+        created_at: new Date().toISOString()
+      });
 
-      if (error) throw error;
-
-      await fetchSupplierDetails(selectedSupplier.id);
-      await fetchSuppliers();
+      fetchSupplierDetails(selectedSupplier.id);
+      fetchSuppliers();
       setShowPaymentModal(false);
       setPaymentForm({
         invoice_id: '',

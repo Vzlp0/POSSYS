@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, User, Phone, Mail, MapPin, Calendar, DollarSign, ShoppingBag, CreditCard as Edit, Trash2, Eye, Gift, Coffee, Star, TrendingUp, Settings, BarChart3, Users, RotateCcw } from 'lucide-react';
 import { Client, LoyaltyCard as LoyaltyCardType, ClientOrder } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+
+// localStorage helpers
+const lsGet = <T,>(key: string): T[] => {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+};
+const lsSet = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+const lsAppend = <T,>(key: string, item: T): T[] => {
+  const arr = lsGet<T>(key);
+  arr.push(item);
+  lsSet(key, arr);
+  return arr;
+};
 import LoyaltyCard from './LoyaltyCard';
 import LoyaltySettings from './LoyaltySettings';
 import LoyaltyReports from './LoyaltyReports';
@@ -44,31 +55,18 @@ export default function ClientRelations() {
     }
   }, [searchTerm, clients]);
 
-  const fetchClients = async () => {
+  const fetchClients = () => {
     try {
       setIsLoading(true);
-      const { data: clientsData, error: clientsError } = await supabase
-        .from('clients')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const clientsData = lsGet<Client>('pos_clients')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      if (clientsError) throw clientsError;
+      const loyaltyCards = lsGet<any>('pos_loyalty_cards');
 
-      const clientsWithLoyalty = await Promise.all(
-        (clientsData || []).map(async (client) => {
-          const { data: loyaltyCard } = await supabase
-            .from('loyalty_cards')
-            .select('*')
-            .eq('client_id', client.id)
-            .eq('status', 'active')
-            .single();
-
-          return {
-            ...client,
-            loyalty_card: loyaltyCard || undefined
-          };
-        })
-      );
+      const clientsWithLoyalty: ClientWithLoyalty[] = clientsData.map(client => ({
+        ...client,
+        loyalty_card: loyaltyCards.find((lc: any) => lc.client_id === client.id && lc.status === 'active') || undefined
+      }));
 
       setClients(clientsWithLoyalty);
     } catch (error) {
@@ -409,7 +407,7 @@ function AddClientModal({ onClose, onSave, currentUser }: AddClientModalProps) {
   const [createLoyaltyCard, setCreateLoyaltyCard] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.first_name || !formData.last_name) {
       alert('Please enter first and last name');
@@ -419,17 +417,11 @@ function AddClientModal({ onClose, onSave, currentUser }: AddClientModalProps) {
     try {
       setIsSubmitting(true);
 
-      console.log('Generating client number...');
-      const { data: clientNumber, error: clientNumberError } = await supabase.rpc('generate_client_number');
-
-      if (clientNumberError) {
-        console.error('Error generating client number:', clientNumberError);
-        throw new Error(`Failed to generate client number: ${clientNumberError.message}`);
-      }
-
-      console.log('Client number generated:', clientNumber);
+      const clientId = Date.now().toString();
+      const clientNumber = 'CLT-' + Date.now();
 
       const clientData: any = {
+        id: clientId,
         client_number: clientNumber,
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -440,70 +432,39 @@ function AddClientModal({ onClose, onSave, currentUser }: AddClientModalProps) {
         notes: formData.notes || null,
         status: 'active',
         total_visits: 0,
-        total_spent: 0
+        total_spent: 0,
+        created_at: new Date().toISOString()
       };
 
-      console.log('Inserting client data:', clientData);
+      lsAppend('pos_clients', clientData);
 
-      const { data: newClient, error: clientError } = await supabase
-        .from('clients')
-        .insert(clientData)
-        .select()
-        .single();
+      if (createLoyaltyCard) {
+        const cardNumber = 'CARD-' + Date.now();
 
-      if (clientError) {
-        console.error('Error inserting client:', clientError);
-        throw new Error(`Failed to create client: ${clientError.message}`);
-      }
+        lsAppend('pos_loyalty_cards', {
+          id: Date.now().toString() + '1',
+          card_number: cardNumber,
+          client_id: clientId,
+          program_type: 'coffee_6plus1',
+          stamps_required: 6,
+          current_stamps: 0,
+          completed_cards: 0,
+          status: 'active',
+          created_at: new Date().toISOString()
+        });
 
-      console.log('Client created successfully:', newClient);
-
-      if (createLoyaltyCard && newClient) {
-        console.log('Creating loyalty card...');
-
-        const { data: cardNumber, error: cardNumberError } = await supabase.rpc('generate_card_number');
-
-        if (cardNumberError) {
-          console.error('Error generating card number:', cardNumberError);
-          throw new Error(`Failed to generate card number: ${cardNumberError.message}`);
-        }
-
-        console.log('Card number generated:', cardNumber);
-
-        const { error: loyaltyError } = await supabase
-          .from('loyalty_cards')
-          .insert({
-            card_number: cardNumber,
-            client_id: newClient.id,
-            program_type: 'coffee_6plus1',
-            stamps_required: 6,
-            current_stamps: 0,
-            completed_cards: 0,
-            status: 'active'
-          });
-
-        if (loyaltyError) {
-          console.error('Error creating loyalty card:', loyaltyError);
-          throw new Error(`Failed to create loyalty card: ${loyaltyError.message}`);
-        }
-
-        console.log('Loyalty card created successfully');
-
-        const { error: clientLoyaltyError } = await supabase.from('client_loyalty').insert({
-          client_id: newClient.id,
+        lsAppend('pos_client_loyalty', {
+          id: Date.now().toString() + '2',
+          client_id: clientId,
           loyalty_type: 'all',
           points_balance: 0,
           points_earned_total: 0,
           points_redeemed_total: 0,
           cashback_balance: 0,
           cashback_earned_total: 0,
-          cashback_used_total: 0
+          cashback_used_total: 0,
+          created_at: new Date().toISOString()
         });
-
-        if (clientLoyaltyError) {
-          console.error('Error creating client loyalty:', clientLoyaltyError);
-          // Don't throw here, this is optional
-        }
       }
 
       alert(`Client ${formData.first_name} ${formData.last_name} added successfully!`);
@@ -675,17 +636,13 @@ function ClientProfileModal({ client, onClose, onUpdate }: ClientProfileModalPro
     fetchReturnHistory();
   }, [client.id]);
 
-  const fetchOrderHistory = async () => {
+  const fetchOrderHistory = () => {
     try {
       setIsLoadingOrders(true);
-      const { data, error } = await supabase
-        .from('client_orders')
-        .select('*')
-        .eq('client_id', client.id)
-        .order('order_date', { ascending: false });
-
-      if (error) throw error;
-      setOrderHistory(data || []);
+      const data = lsGet<any>('pos_client_orders')
+        .filter((o: any) => o.client_id === client.id)
+        .sort((a: any, b: any) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime());
+      setOrderHistory(data);
     } catch (error) {
       console.error('Error fetching order history:', error);
     } finally {
@@ -693,29 +650,19 @@ function ClientProfileModal({ client, onClose, onUpdate }: ClientProfileModalPro
     }
   };
 
-  const fetchReturnHistory = async () => {
+  const fetchReturnHistory = () => {
     try {
       setIsLoadingReturns(true);
-      // Get returns for this client's orders
-      const { data: orders } = await supabase
-        .from('client_orders')
-        .select('order_number')
-        .eq('client_id', client.id);
-
-      if (orders && orders.length > 0) {
-        const orderNumbers = orders.map(o => o.order_number);
-
-        const { data, error } = await supabase
-          .from('returns')
-          .select(`
-            *,
-            return_items (*)
-          `)
-          .in('invoice_number', orderNumbers)
-          .order('return_date', { ascending: false });
-
-        if (error) throw error;
-        setReturnHistory(data || []);
+      const orders = lsGet<any>('pos_client_orders').filter((o: any) => o.client_id === client.id);
+      if (orders.length > 0) {
+        const orderNumbers = orders.map((o: any) => o.order_number);
+        const allReturns = lsGet<any>('pos_returns');
+        const allReturnItems = lsGet<any>('pos_return_items');
+        const data = allReturns
+          .filter((r: any) => orderNumbers.includes(r.invoice_number))
+          .map((r: any) => ({ ...r, return_items: allReturnItems.filter((ri: any) => ri.return_id === r.id) }))
+          .sort((a: any, b: any) => new Date(b.return_date).getTime() - new Date(a.return_date).getTime());
+        setReturnHistory(data);
       }
     } catch (error) {
       console.error('Error fetching return history:', error);

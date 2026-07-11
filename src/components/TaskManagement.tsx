@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, Plus, Calendar, Users, BarChart3, Bell, CreditCard as Edit, Trash2, MessageSquare, Clock, AlertCircle, CheckCircle2, Filter, Download, Image, CheckSquare, Send, X } from 'lucide-react';
 import { Task, Employee, TaskComment, TaskTemplate, TaskStep, TaskAttachment } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+
+// localStorage helpers
+const lsGet = <T,>(key: string): T[] => {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+};
+const lsSet = (key: string, value: unknown) => localStorage.setItem(key, JSON.stringify(value));
+const lsAppend = <T,>(key: string, item: T): T[] => {
+  const arr = lsGet<T>(key);
+  arr.push(item);
+  lsSet(key, arr);
+  return arr;
+};
 
 export default function TaskManagement() {
   const { user } = useAuth();
@@ -21,14 +32,12 @@ export default function TaskManagement() {
     fetchData();
   }, [activeTab]);
 
-  const fetchData = async () => {
+  const fetchData = () => {
     try {
       setIsLoading(true);
-      await Promise.all([
-        fetchTasks(),
-        fetchEmployees(),
-        fetchTemplates()
-      ]);
+      fetchTasks();
+      fetchEmployees();
+      fetchTemplates();
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -36,35 +45,28 @@ export default function TaskManagement() {
     }
   };
 
-  const fetchTasks = async () => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*, employee:employees!tasks_assigned_to_fkey(*)')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    setTasks(data || []);
+  const fetchTasks = () => {
+    const data = lsGet<Task>('pos_tasks');
+    const emps = lsGet<Employee>('pos_employees');
+    const enriched = data
+      .map(t => ({ ...t, employee: emps.find(e => e.id === t.assigned_to) || null }))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setTasks(enriched);
   };
 
-  const fetchEmployees = async () => {
-    const { data, error } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('status', 'active')
-      .order('first_name', { ascending: true });
-
-    if (error) throw error;
-    setEmployees(data || []);
+  const fetchEmployees = () => {
+    const data = lsGet<Employee>('pos_employees')
+      .filter(e => e.status === 'active')
+      .sort((a, b) => a.first_name.localeCompare(b.first_name));
+    setEmployees(data);
   };
 
-  const fetchTemplates = async () => {
-    const { data, error } = await supabase
-      .from('task_templates')
-      .select('*, employee:employees!task_templates_assigned_to_fkey(*)')
-      .eq('is_active', true);
-
-    if (error) throw error;
-    setTemplates(data || []);
+  const fetchTemplates = () => {
+    const emps = lsGet<Employee>('pos_employees');
+    const data = lsGet<TaskTemplate>('pos_task_templates')
+      .filter(t => t.is_active)
+      .map(t => ({ ...t, employee: emps.find(e => e.id === t.assigned_to) || null }));
+    setTemplates(data);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -272,16 +274,12 @@ interface TaskMasterProps {
 }
 
 function TaskMaster({ tasks, employees, onEdit, onRefresh, getPriorityColor, getStatusColor }: TaskMasterProps) {
-  const handleDelete = async (taskId: string) => {
+  const handleDelete = (taskId: string) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
 
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', taskId);
-
-      if (error) throw error;
+      const all = lsGet<any>('pos_tasks');
+      lsSet('pos_tasks', all.filter((t: any) => t.id !== taskId));
       alert('Task deleted successfully');
       onRefresh();
     } catch (error) {
@@ -404,24 +402,16 @@ function MyTasks({ tasks, onRefresh, getPriorityColor, getStatusColor }: MyTasks
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<TaskComment[]>([]);
 
-  const updateTaskStatus = async (taskId: string, newStatus: string) => {
+  const updateTaskStatus = (taskId: string, newStatus: string) => {
     try {
-      const updates: any = { status: newStatus };
-
-      if (newStatus === 'in_progress' && !tasks.find(t => t.id === taskId)?.started_at) {
-        updates.started_at = new Date().toISOString();
-      }
-
-      if (newStatus === 'completed') {
-        updates.completed_at = new Date().toISOString();
-      }
-
-      const { error } = await supabase
-        .from('tasks')
-        .update(updates)
-        .eq('id', taskId);
-
-      if (error) throw error;
+      const all = lsGet<any>('pos_tasks');
+      lsSet('pos_tasks', all.map((t: any) => {
+        if (t.id !== taskId) return t;
+        const updates: any = { ...t, status: newStatus };
+        if (newStatus === 'in_progress' && !t.started_at) updates.started_at = new Date().toISOString();
+        if (newStatus === 'completed') updates.completed_at = new Date().toISOString();
+        return updates;
+      }));
       alert('Task status updated');
       onRefresh();
     } catch (error) {
@@ -430,19 +420,17 @@ function MyTasks({ tasks, onRefresh, getPriorityColor, getStatusColor }: MyTasks
     }
   };
 
-  const addComment = async () => {
+  const addComment = () => {
     if (!selectedTask || !newComment.trim()) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .insert({
-          task_id: selectedTask.id,
-          comment: newComment,
-          created_by: 'Current User'
-        });
-
-      if (error) throw error;
+      lsAppend('pos_task_comments', {
+        id: Date.now().toString(),
+        task_id: selectedTask.id,
+        comment: newComment,
+        created_by: 'Current User',
+        created_at: new Date().toISOString()
+      });
       setNewComment('');
       loadComments(selectedTask.id);
       alert('Comment added');
@@ -452,14 +440,11 @@ function MyTasks({ tasks, onRefresh, getPriorityColor, getStatusColor }: MyTasks
     }
   };
 
-  const loadComments = async (taskId: string) => {
-    const { data, error } = await supabase
-      .from('task_comments')
-      .select('*')
-      .eq('task_id', taskId)
-      .order('created_at', { ascending: false });
-
-    if (!error) setComments(data || []);
+  const loadComments = (taskId: string) => {
+    const data = lsGet<TaskComment>('pos_task_comments')
+      .filter(c => c.task_id === taskId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setComments(data);
   };
 
   return (
@@ -613,14 +598,10 @@ function ManagerDashboard({
   getPriorityColor,
   getStatusColor
 }: ManagerDashboardProps) {
-  const reassignTask = async (taskId: string, newEmployeeId: string) => {
+  const reassignTask = (taskId: string, newEmployeeId: string) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ assigned_to: newEmployeeId })
-        .eq('id', taskId);
-
-      if (error) throw error;
+      const all = lsGet<any>('pos_tasks');
+      lsSet('pos_tasks', all.map((t: any) => t.id === taskId ? { ...t, assigned_to: newEmployeeId } : t));
       alert('Task reassigned successfully');
       onRefresh();
     } catch (error) {
@@ -795,34 +776,28 @@ interface DailyTaskLogProps {
 function DailyTaskLog({ templates, employees, onRefresh }: DailyTaskLogProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const generateDailyTasks = async () => {
+  const generateDailyTasks = () => {
     try {
       const dailyTemplates = templates.filter(t => t.is_daily);
 
-      const tasksToCreate = dailyTemplates.map(async (template) => {
-        const { data: taskNumber } = await supabase.rpc('generate_task_number');
+      const tasks = dailyTemplates.map((template) => ({
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        task_number: 'TASK-' + Date.now(),
+        title: template.title,
+        description: template.description,
+        assigned_to: template.assigned_to,
+        assigned_by: 'System',
+        priority: template.priority,
+        status: 'pending',
+        is_daily_task: true,
+        task_date: selectedDate,
+        deadline: new Date(new Date(selectedDate).setHours(23, 59, 59)).toISOString(),
+        created_at: new Date().toISOString()
+      }));
 
-        return {
-          task_number: taskNumber,
-          title: template.title,
-          description: template.description,
-          assigned_to: template.assigned_to,
-          assigned_by: 'System',
-          priority: template.priority,
-          status: 'pending',
-          is_daily_task: true,
-          task_date: selectedDate,
-          deadline: new Date(new Date(selectedDate).setHours(23, 59, 59)).toISOString()
-        };
-      });
+      const existing = lsGet<any>('pos_tasks');
+      lsSet('pos_tasks', [...existing, ...tasks]);
 
-      const tasks = await Promise.all(tasksToCreate);
-
-      const { error } = await supabase
-        .from('tasks')
-        .insert(tasks);
-
-      if (error) throw error;
       alert(`Generated ${tasks.length} daily tasks for ${selectedDate}`);
       onRefresh();
     } catch (error) {
@@ -1004,21 +979,19 @@ function TaskModal({ task, employees, onClose, onSave, currentUser }: TaskModalP
     }
   }, [task]);
 
-  const fetchTaskData = async () => {
+  const fetchTaskData = () => {
     if (!task) return;
 
-    const [stepsData, commentsData, attachmentsData] = await Promise.all([
-      supabase.from('task_steps').select('*').eq('task_id', task.id).order('step_number'),
-      supabase.from('task_comments').select('*').eq('task_id', task.id).order('created_at'),
-      supabase.from('task_attachments').select('*').eq('task_id', task.id).order('created_at')
-    ]);
+    const allSteps = lsGet<TaskStep>('pos_task_steps').filter(s => s.task_id === task.id);
+    const allComments = lsGet<TaskComment>('pos_task_comments').filter(c => c.task_id === task.id);
+    const allAttachments = lsGet<TaskAttachment>('pos_task_attachments').filter(a => a.task_id === task.id);
 
-    if (stepsData.data) setSteps(stepsData.data);
-    if (commentsData.data) setComments(commentsData.data);
-    if (attachmentsData.data) setAttachments(attachmentsData.data);
+    setSteps(allSteps.sort((a, b) => (a.step_number || 0) - (b.step_number || 0)));
+    setComments(allComments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+    setAttachments(allAttachments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
@@ -1035,36 +1008,29 @@ function TaskModal({ task, employees, onClose, onSave, currentUser }: TaskModalP
       let taskId = task?.id;
 
       if (task) {
-        const { error } = await supabase
-          .from('tasks')
-          .update(taskData)
-          .eq('id', task.id);
-
-        if (error) throw error;
+        const allTasks = lsGet<any>('pos_tasks');
+        lsSet('pos_tasks', allTasks.map(t => t.id === task.id ? { ...t, ...taskData } : t));
       } else {
-        const { data: taskNumber } = await supabase.rpc('generate_task_number');
-        taskData.task_number = taskNumber;
+        taskId = Date.now().toString();
+        taskData.id = taskId;
+        taskData.task_number = 'TASK-' + Date.now();
         taskData.status = 'pending';
         taskData.task_date = formData.is_daily_task ? new Date().toISOString().split('T')[0] : null;
+        taskData.created_at = new Date().toISOString();
 
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert(taskData)
-          .select()
-          .single();
-
-        if (error) throw error;
-        taskId = data.id;
+        lsAppend('pos_tasks', taskData);
 
         if (steps.length > 0) {
           const stepsData = steps.map((step, index) => ({
+            id: Date.now().toString() + index,
             task_id: taskId,
             step_number: index + 1,
             description: step.description,
-            is_completed: false
+            is_completed: false,
+            created_at: new Date().toISOString()
           }));
-
-          await supabase.from('task_steps').insert(stepsData);
+          const existingSteps = lsGet<any>('pos_task_steps');
+          lsSet('pos_task_steps', [...existingSteps, ...stepsData]);
         }
       }
 
@@ -1088,25 +1054,25 @@ function TaskModal({ task, employees, onClose, onSave, currentUser }: TaskModalP
     setSteps(steps.filter((_, i) => i !== index));
   };
 
-  const addComment = async () => {
+  const addComment = () => {
     if (!newComment.trim() || !task) return;
 
     try {
-      const { error } = await supabase.from('task_comments').insert({
+      lsAppend('pos_task_comments', {
+        id: Date.now().toString(),
         task_id: task.id,
         comment: newComment,
-        created_by: currentUser?.email || 'User'
+        created_by: currentUser?.email || 'User',
+        created_at: new Date().toISOString()
       });
-
-      if (error) throw error;
       setNewComment('');
-      await fetchTaskData();
+      fetchTaskData();
     } catch (error) {
       console.error('Error adding comment:', error);
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !task) return;
 
@@ -1114,17 +1080,17 @@ function TaskModal({ task, employees, onClose, onSave, currentUser }: TaskModalP
 
     const simulatedUrl = URL.createObjectURL(file);
     try {
-      const { error } = await supabase.from('task_attachments').insert({
+      lsAppend('pos_task_attachments', {
+        id: Date.now().toString(),
         task_id: task.id,
         file_name: file.name,
         file_url: simulatedUrl,
         file_type: file.type,
         file_size: file.size,
-        uploaded_by: currentUser?.email || 'User'
+        uploaded_by: currentUser?.email || 'User',
+        created_at: new Date().toISOString()
       });
-
-      if (error) throw error;
-      await fetchTaskData();
+      fetchTaskData();
     } catch (error) {
       console.error('Error uploading attachment:', error);
     }
