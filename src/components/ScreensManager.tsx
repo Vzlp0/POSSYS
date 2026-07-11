@@ -32,80 +32,9 @@ import {
 import { Screen, ScreenPlaylist, ScreenOverride } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
-// Mock data
-const mockScreens: Screen[] = [
-  {
-    id: '1',
-    name: 'Main Entrance Display',
-    location: 'KC Store - Main Entrance',
-    screenCode: 'SCR-001',
-    isActive: true,
-    theme: 'blue',
-    language: 'en',
-    currency: 'USD',
-    showPrices: true,
-    rotationSeconds: 10,
-    lastPingAt: new Date(Date.now() - 30000).toISOString(), // 30 seconds ago
-    isOnline: true,
-    assignedPlaylistId: '1',
-    assignedPlaylistName: 'Main Menu',
-    createdAt: '2024-12-20T08:00:00Z',
-    updatedAt: '2024-12-20T10:30:00Z'
-  },
-  {
-    id: '2',
-    name: 'Counter Display',
-    location: 'KC Store - Counter Area',
-    screenCode: 'SCR-002',
-    isActive: true,
-    theme: 'light',
-    language: 'en',
-    currency: 'USD',
-    showPrices: false,
-    rotationSeconds: 15,
-    lastPingAt: new Date(Date.now() - 180000).toISOString(), // 3 minutes ago
-    isOnline: false,
-    assignedPlaylistId: '2',
-    assignedPlaylistName: 'Quick Items',
-    createdAt: '2024-12-19T14:00:00Z',
-    updatedAt: '2024-12-20T09:15:00Z'
-  },
-  {
-    id: '3',
-    name: 'Drive-Through Menu',
-    location: 'Olaya Store - Drive-Through',
-    screenCode: 'SCR-003',
-    isActive: false,
-    theme: 'dark',
-    language: 'en',
-    currency: 'USD',
-    showPrices: true,
-    rotationSeconds: 8,
-    lastPingAt: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
-    isOnline: false,
-    createdAt: '2024-12-18T16:30:00Z',
-    updatedAt: '2024-12-19T11:45:00Z'
-  }
-];
-
-const mockPlaylists: ScreenPlaylist[] = [
-  {
-    id: '1',
-    screenId: '1',
-    name: 'Main Menu',
-    isActive: true,
-    createdAt: '2024-12-20T08:00:00Z',
-    updatedAt: '2024-12-20T08:00:00Z'
-  },
-  {
-    id: '2',
-    screenId: '2',
-    name: 'Quick Items',
-    isActive: true,
-    createdAt: '2024-12-19T14:00:00Z',
-    updatedAt: '2024-12-19T14:00:00Z'
-  }
-];
+// Data from localStorage
+const mockScreens: Screen[] = JSON.parse(localStorage.getItem('pos_menu_screens') || '[]');
+const mockPlaylists: ScreenPlaylist[] = JSON.parse(localStorage.getItem('pos_menu_playlists') || '[]');
 
 const themes = [
   { value: 'light', label: 'Light', preview: 'bg-white text-gray-900 dark:text-gray-100' },

@@ -28,78 +28,10 @@ import {
 } from 'lucide-react';
 import { MenuTemplate, TemplateZone, MediaAsset } from '../types';
 
-// Mock data
-const mockTemplates: MenuTemplate[] = [
-  {
-    id: '1',
-    name: 'Lux Single Board',
-    branchId: '1',
-    bgMode: 'image',
-    bgColor: '#1f2937',
-    bgMediaId: '1',
-    zones: [
-      {
-        id: '1',
-        type: 'priceboard',
-        x: 50,
-        y: 100,
-        w: 600,
-        h: 800,
-        style: {
-          fontFamily: 'Inter',
-          fontSize: 24,
-          fontWeight: 'bold',
-          textAlign: 'left',
-          color: '#ffffff',
-          backgroundColor: 'rgba(0,0,0,0.7)',
-          padding: 20,
-          borderRadius: 12
-        },
-        bindings: {
-          categories: ['Coffee', 'Pastries'],
-          hideOOS: true
-        }
-      }
-    ]
-  }
-];
-
-const mockMediaAssets: MediaAsset[] = [
-  {
-    id: '1',
-    title: 'Coffee Shop Background',
-    type: 'image',
-    fileUrl: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg',
-    aspect: '16:9',
-    branchId: '1'
-  },
-  {
-    id: '2',
-    title: 'Morning Promo Video',
-    type: 'video',
-    fileUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-    durationSec: 30,
-    aspect: '16:9',
-    branchId: '1'
-  }
-];
-
-const mockPlaylists = [
-  {
-    id: '1',
-    name: 'Main Menu',
-    branchId: '1',
-    templateId: '1',
-    rotation: []
-  },
-  {
-    id: '2', 
-    name: 'Breakfast Special',
-    branchId: '1',
-    templateId: '1',
-    rotation: []
-  }
-];
+// Data from localStorage
+const mockTemplates: MenuTemplate[] = JSON.parse(localStorage.getItem('pos_menu_templates') || '[]');
+const mockMediaAssets: MediaAsset[] = JSON.parse(localStorage.getItem('pos_media_assets') || '[]');
+const mockPlaylists: any[] = JSON.parse(localStorage.getItem('pos_menu_playlists') || '[]');
 
 const resolutionPresets = [
   { name: 'HD Landscape', width: 1920, height: 1080, aspect: '16:9' },

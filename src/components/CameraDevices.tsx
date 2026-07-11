@@ -21,100 +21,10 @@ import {
   Zap
 } from 'lucide-react';
 
-// Mock data
-const mockBranches = [
-  { id: '1', name: 'KC Store', code: 'KC', timezone: 'Asia/Riyadh' },
-  { id: '2', name: 'Olaya Store', code: 'OL', timezone: 'Asia/Riyadh' },
-  { id: '3', name: 'Solitaire Store', code: 'SOL', timezone: 'Asia/Riyadh' },
-  { id: '4', name: 'Jeddah Store', code: 'JED', timezone: 'Asia/Riyadh' }
-];
-
-const mockNVRs = [
-  {
-    id: '1',
-    branchId: '1',
-    vendor: 'Hikvision',
-    name: 'KC Main NVR',
-    host: '192.168.1.100',
-    apiPort: 80,
-    rtspPort: 554,
-    username: 'admin',
-    timezone: 'Asia/Riyadh',
-    clockDriftSec: 0,
-    defaultPreSec: 10,
-    defaultPostSec: 10,
-    retentionDays: 30,
-    storageTarget: 'Local',
-    isEnabled: true,
-    healthStatus: 'Online',
-    lastHeartbeatAt: new Date(Date.now() - 30000).toISOString(),
-    createdAt: '2024-12-20T08:00:00Z'
-  },
-  {
-    id: '2',
-    branchId: '2',
-    vendor: 'Dahua',
-    name: 'Olaya NVR',
-    host: '192.168.2.100',
-    apiPort: 80,
-    rtspPort: 554,
-    username: 'admin',
-    timezone: 'Asia/Riyadh',
-    clockDriftSec: -5,
-    defaultPreSec: 10,
-    defaultPostSec: 10,
-    retentionDays: 30,
-    storageTarget: 'S3',
-    isEnabled: true,
-    healthStatus: 'Offline',
-    lastHeartbeatAt: new Date(Date.now() - 300000).toISOString(),
-    createdAt: '2024-12-19T10:00:00Z'
-  }
-];
-
-const mockCameras = [
-  {
-    id: '1',
-    branchId: '1',
-    nvrId: '1',
-    name: 'Cashier 1',
-    channel: 1,
-    rtspUrl: 'rtsp://192.168.1.100:554/cam1',
-    onvifProfile: 'Profile_1',
-    tags: ['cashier', 'pos'],
-    isEnabled: true,
-    healthStatus: 'Online',
-    lastHeartbeatAt: new Date(Date.now() - 45000).toISOString(),
-    createdAt: '2024-12-20T08:00:00Z'
-  },
-  {
-    id: '2',
-    branchId: '1',
-    nvrId: '1',
-    name: 'Entrance',
-    channel: 2,
-    rtspUrl: 'rtsp://192.168.1.100:554/cam2',
-    onvifProfile: 'Profile_1',
-    tags: ['entrance', 'security'],
-    isEnabled: true,
-    healthStatus: 'Online',
-    lastHeartbeatAt: new Date(Date.now() - 60000).toISOString(),
-    createdAt: '2024-12-20T08:00:00Z'
-  },
-  {
-    id: '3',
-    branchId: '1',
-    nvrId: '1',
-    name: 'Safe Area',
-    channel: 3,
-    rtspUrl: 'rtsp://192.168.1.100:554/cam3',
-    tags: ['safe', 'security'],
-    isEnabled: true,
-    healthStatus: 'Error',
-    lastHeartbeatAt: new Date(Date.now() - 600000).toISOString(),
-    createdAt: '2024-12-20T08:00:00Z'
-  }
-];
+// Data from localStorage
+const mockBranches: any[] = JSON.parse(localStorage.getItem('pos_branches') || '[]');
+const mockNVRs: any[] = JSON.parse(localStorage.getItem('pos_nvrs') || '[]');
+const mockCameras: any[] = JSON.parse(localStorage.getItem('pos_cameras') || '[]');
 
 const vendors = ['Hikvision', 'Dahua', 'UNV', 'Axis', 'Other'];
 const storageTargets = ['Local', 'S3'];

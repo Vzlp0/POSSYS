@@ -21,88 +21,9 @@ interface PairingData {
   error: string;
 }
 
-// Mock data for pairing
-const mockScreensForPairing = [
-  {
-    id: '1',
-    name: 'Main Entrance Display',
-    deviceToken: 'ABC123',
-    theme: 'blue',
-    language: 'en',
-    currency: 'USD',
-    showPrices: true,
-    rotationSeconds: 10,
-    isActive: true,
-    currentPlaylistId: '1'
-  },
-  {
-    id: '2',
-    name: 'Counter Display',
-    deviceToken: 'DEF456',
-    theme: 'light',
-    language: 'en',
-    currency: 'USD',
-    showPrices: false,
-    rotationSeconds: 15,
-    isActive: true,
-    currentPlaylistId: '2'
-  }
-];
-
-const mockMenuItems: MenuItemData[] = [
-  {
-    id: '1',
-    branchId: '1',
-    sku: 'COFFEE-001',
-    nameEn: 'Premium Coffee Blend',
-    description: 'Our signature coffee blend',
-    price: 4.50,
-    category: 'Coffee',
-    imageUrl: 'https://images.pexels.com/photos/324028/pexels-photo-324028.jpeg',
-    isActive: true,
-    isOutOfStock: false,
-    minDisplayThreshold: 5
-  },
-  {
-    id: '2',
-    branchId: '1',
-    sku: 'PASTRY-001',
-    nameEn: 'Croissant',
-    description: 'Fresh baked croissant',
-    price: 3.75,
-    category: 'Pastries',
-    imageUrl: 'https://images.pexels.com/photos/1775043/pexels-photo-1775043.jpeg',
-    isActive: true,
-    isOutOfStock: true,
-    minDisplayThreshold: 3
-  },
-  {
-    id: '3',
-    branchId: '1',
-    sku: 'BEV-001',
-    nameEn: 'Cappuccino',
-    description: 'Rich and creamy cappuccino',
-    price: 4.50,
-    category: 'Coffee',
-    imageUrl: 'https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg',
-    isActive: true,
-    isOutOfStock: false,
-    minDisplayThreshold: 10
-  },
-  {
-    id: '4',
-    branchId: '1',
-    sku: 'PASTRY-002',
-    nameEn: 'Blueberry Muffin',
-    description: 'Fresh blueberry muffin',
-    price: 2.99,
-    category: 'Pastries',
-    imageUrl: 'https://images.pexels.com/photos/2067396/pexels-photo-2067396.jpeg',
-    isActive: true,
-    isOutOfStock: false,
-    minDisplayThreshold: 5
-  }
-];
+// Data from localStorage
+const mockScreensForPairing: any[] = JSON.parse(localStorage.getItem('pos_menu_screens') || '[]');
+const mockMenuItems: MenuItemData[] = JSON.parse(localStorage.getItem('pos_items') || '[]');
 
 export default function Player() {
   const [currentTime, setCurrentTime] = useState(new Date());

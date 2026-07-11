@@ -18,66 +18,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 
-// Mock data
-const mockBranches = [
-  { id: '1', name: 'KC Store', code: 'KC' },
-  { id: '2', name: 'Olaya Store', code: 'OL' },
-  { id: '3', name: 'Solitaire Store', code: 'SOL' },
-  { id: '4', name: 'Jeddah Store', code: 'JED' }
-];
-
-const mockCameras = [
-  {
-    id: '1',
-    branchId: '1',
-    name: 'Cashier 1',
-    tags: ['cashier', 'pos'],
-    healthStatus: 'Online',
-    liveUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-    isPlaying: true,
-    isMuted: true
-  },
-  {
-    id: '2',
-    branchId: '1',
-    name: 'Entrance',
-    tags: ['entrance', 'security'],
-    healthStatus: 'Online',
-    liveUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-    isPlaying: true,
-    isMuted: true
-  },
-  {
-    id: '3',
-    branchId: '1',
-    name: 'Safe Area',
-    tags: ['safe', 'security'],
-    healthStatus: 'Error',
-    liveUrl: null,
-    isPlaying: false,
-    isMuted: true
-  },
-  {
-    id: '4',
-    branchId: '1',
-    name: 'Backroom',
-    tags: ['backroom', 'storage'],
-    healthStatus: 'Online',
-    liveUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-    isPlaying: true,
-    isMuted: true
-  },
-  {
-    id: '5',
-    branchId: '2',
-    name: 'Cashier 1',
-    tags: ['cashier', 'pos'],
-    healthStatus: 'Offline',
-    liveUrl: null,
-    isPlaying: false,
-    isMuted: true
-  }
-];
+// Data from localStorage
+const mockBranches: any[] = JSON.parse(localStorage.getItem('pos_branches') || '[]');
+const mockCameras: any[] = JSON.parse(localStorage.getItem('pos_cameras') || '[]');
 
 interface CameraLiveViewProps {
   onBack: () => void;

@@ -102,30 +102,8 @@ export default function ISTOTransfer({ onBack }: ISTOTransferProps) {
     }>
   });
 
-  // Mock batch data for source store
-  const mockSourceBatches = [
-    {
-      batchNo: 'ITM-001-001',
-      itemId: '1',
-      expiryDate: '2025-01-15',
-      location: 'Warehouse - Section A1',
-      onHand: 25
-    },
-    {
-      batchNo: 'ITM-001-002',
-      itemId: '1',
-      expiryDate: '2025-02-20',
-      location: 'Warehouse - Section A1',
-      onHand: 15
-    },
-    {
-      batchNo: 'ITM-002-001',
-      itemId: '2',
-      expiryDate: null,
-      location: 'KC Store - Main Floor',
-      onHand: 500
-    }
-  ];
+  // Batch data from localStorage
+  const mockSourceBatches: any[] = JSON.parse(localStorage.getItem('pos_stock_levels') || '[]');
   const [showRequestedISTOs, setShowRequestedISTOs] = useState(false);
 
   // Load items from localStorage
@@ -134,14 +112,7 @@ export default function ISTOTransfer({ onBack }: ISTOTransferProps) {
     if (stored) {
       setLocalItems(JSON.parse(stored));
     } else {
-      const sampleItems = [
-        { id: '1', name: 'School Shirt - White', sku: 'SH-WHT-001', unit: 'pcs' },
-        { id: '2', name: 'School Pants - Navy', sku: 'PN-NVY-001', unit: 'pcs' },
-        { id: '3', name: 'School Skirt - Navy', sku: 'SK-NVY-001', unit: 'pcs' },
-        { id: '4', name: 'School Blazer - Navy', sku: 'BL-NVY-001', unit: 'pcs' },
-        { id: '5', name: 'School Tie', sku: 'TI-STD-001', unit: 'pcs' }
-      ];
-      setLocalItems(sampleItems);
+      setLocalItems([]);
     }
   }, []);
 
@@ -151,25 +122,7 @@ export default function ISTOTransfer({ onBack }: ISTOTransferProps) {
     if (stored) {
       setIstos(JSON.parse(stored));
     } else {
-      const sampleIstos: ISTO[] = [
-        {
-          id: '1',
-          istoNumber: 'ISTO-001',
-          sourceStore: 'KC',
-          targetStore: 'Olaya',
-          status: 'Requested',
-          lastAction: 'Requested by Olaya',
-          lastActionAt: new Date().toISOString(),
-          createdBy: 'Admin User',
-          createdAt: new Date().toISOString(),
-          notes: 'Urgent restock needed',
-          lines: [
-            { id: '1-1', itemId: '1', itemName: 'School Shirt - White', itemSku: 'SH-WHT-001', unit: 'pcs', requestedQty: 50, pickedQty: 0, receivedQty: 0, status: 'Open' }
-          ]
-        }
-      ];
-      setIstos(sampleIstos);
-      localStorage.setItem('pos_isto_transfers', JSON.stringify(sampleIstos));
+      setIstos([]);
     }
   }, []);
 

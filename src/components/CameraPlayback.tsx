@@ -14,20 +14,9 @@ import {
   Filter
 } from 'lucide-react';
 
-// Mock data
-const mockBranches = [
-  { id: '1', name: 'KC Store', code: 'KC' },
-  { id: '2', name: 'Olaya Store', code: 'OL' },
-  { id: '3', name: 'Solitaire Store', code: 'SOL' },
-  { id: '4', name: 'Jeddah Store', code: 'JED' }
-];
-
-const mockCameras = [
-  { id: '1', branchId: '1', name: 'Cashier 1', tags: ['cashier', 'pos'] },
-  { id: '2', branchId: '1', name: 'Entrance', tags: ['entrance', 'security'] },
-  { id: '3', branchId: '1', name: 'Safe Area', tags: ['safe', 'security'] },
-  { id: '4', branchId: '2', name: 'Cashier 1', tags: ['cashier', 'pos'] }
-];
+// Data from localStorage
+const mockBranches: any[] = JSON.parse(localStorage.getItem('pos_branches') || '[]');
+const mockCameras: any[] = JSON.parse(localStorage.getItem('pos_cameras') || '[]');
 
 interface CameraPlaybackProps {
   onBack: () => void;

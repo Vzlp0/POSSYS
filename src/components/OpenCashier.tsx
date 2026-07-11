@@ -19,37 +19,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { DayOpening } from '../types';
 
-// Mock users data for cashier selection
-export const mockCashiers = [
-  {
-    id: '1',
-    firstName: 'John',
-    lastName: 'Admin',
-    email: 'admin@company.com',
-    role: 'admin'
-  },
-  {
-    id: '2',
-    firstName: 'Sarah',
-    lastName: 'Manager',
-    email: 'manager@company.com',
-    role: 'manager'
-  },
-  {
-    id: '3',
-    firstName: 'Mike',
-    lastName: 'Cashier',
-    email: 'cashier@company.com',
-    role: 'cashier'
-  },
-  {
-    id: '4',
-    firstName: 'Lisa',
-    lastName: 'Staff',
-    email: 'staff@company.com',
-    role: 'staff'
-  }
-];
+// Users from localStorage
+export const mockCashiers: any[] = JSON.parse(localStorage.getItem('pos_users') || '[]');
 
 interface CashierShift {
   id: string;
