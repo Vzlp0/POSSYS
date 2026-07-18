@@ -535,7 +535,9 @@ export default function GoodsReceipt({ onBack }: GoodsReceiptProps) {
         grDate: formData.grDate,
         status: 'Completed',
         total,
-        items: Array.from(itemMap.values())
+        poId: selectedPO?.id || null,
+        poNumber: selectedPO?.poNumber || null,
+        items: Array.from(itemMap.values()).map(item => ({ ...item, itemId: item.id }))
       };
 
       // 1. Save GR to localStorage
@@ -1386,16 +1388,30 @@ export default function GoodsReceipt({ onBack }: GoodsReceiptProps) {
                       <thead className="bg-gray-50 dark:bg-gray-900">
                         <tr>
                           <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Item</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Ordered</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Already Received</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Received</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Ordered Qty</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">GR'd Before</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Remaining</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Receiving Now</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Unit Price</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Batches</th>
                           <th className="text-left py-3 px-4 font-medium text-gray-900 dark:text-gray-100">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {formData.items.map((item) => (
+                        {formData.items.map((item) => {
+                          // Previous GRs for this item from the same PO
+                          const grHistory: any[] = JSON.parse(localStorage.getItem('pos_gr_history') || '[]');
+                          const prevGRs = selectedPO
+                            ? grHistory
+                                .filter((gr: any) => gr.poId === selectedPO.id)
+                                .flatMap((gr: any) =>
+                                  (gr.items || [])
+                                    .filter((gi: any) => gi.itemCode === item.itemCode)
+                                    .map((gi: any) => ({ grNumber: gr.grNumber, grDate: gr.grDate, qty: gi.receivedQuantity, unit: item.unit }))
+                                )
+                            : [];
+                          const remaining = item.orderedQuantity - (item.alreadyReceived || 0);
+                          return (
                           <tr key={item.id}>
                             <td className="py-3 px-4">
                               <div>
@@ -1404,10 +1420,32 @@ export default function GoodsReceipt({ onBack }: GoodsReceiptProps) {
                               </div>
                             </td>
                             <td className="py-3 px-4">
-                              <span className="text-gray-900 dark:text-gray-100">{item.orderedQuantity} {item.unit}</span>
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">{item.orderedQuantity} {item.unit}</span>
                             </td>
                             <td className="py-3 px-4">
-                              <span className="text-gray-900 dark:text-gray-100">{item.alreadyReceived} {item.unit}</span>
+                              {item.alreadyReceived > 0 ? (
+                                <div>
+                                  <span className="font-semibold text-orange-600">{item.alreadyReceived} {item.unit}</span>
+                                  {prevGRs.length > 0 && (
+                                    <div className="mt-1 space-y-0.5">
+                                      {prevGRs.map((pg: any, idx: number) => (
+                                        <div key={idx} className="text-xs text-gray-500 flex items-center space-x-1">
+                                          <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">{pg.grNumber}</span>
+                                          <span>{pg.grDate}</span>
+                                          <span className="font-medium text-orange-500">+{pg.qty} {pg.unit}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">None</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`font-semibold ${remaining <= 0 ? 'text-green-600' : 'text-blue-600'}`}>
+                                {remaining <= 0 ? 'Fully Received' : `${remaining} ${item.unit}`}
+                              </span>
                             </td>
                             <td className="py-3 px-4">
                               <input
@@ -1466,7 +1504,8 @@ export default function GoodsReceipt({ onBack }: GoodsReceiptProps) {
                               )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
