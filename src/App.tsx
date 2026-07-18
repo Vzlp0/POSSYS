@@ -41,9 +41,25 @@ function AppContent() {
   const { user, logout, switchUser, isLoading } = useAuth();
   const { isDarkMode } = useTheme();
   const [activeItem, setActiveItem] = useState('hub');
+  const [navHistory, setNavHistory] = useState<string[]>([]);
   const [menuScreensPage, setMenuScreensPage] = useState<'dashboard' | 'menu-admin' | 'template-designer' | 'screens-manager' | 'player'>('dashboard');
   const [cameraPage, setCameraPage] = useState<'overview' | 'event-viewer' | 'live-view' | 'playback' | 'devices' | 'settings'>('overview');
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  const navigateTo = (item: string) => {
+    setNavHistory(prev => [...prev, activeItem]);
+    setActiveItem(item);
+  };
+
+  const goBack = () => {
+    if (navHistory.length > 0) {
+      const prev = navHistory[navHistory.length - 1];
+      setNavHistory(h => h.slice(0, -1));
+      setActiveItem(prev);
+    } else {
+      setActiveItem('hub');
+    }
+  };
 
   // عرض شاشة التحميل أثناء تسجيل الدخول التلقائي
   if (isLoading) {
@@ -87,9 +103,9 @@ function AppContent() {
   const renderContent = () => {
     switch (activeItem) {
       case 'hub':
-        return <FeaturesHub onNavigate={setActiveItem} />;
+        return <FeaturesHub onNavigate={navigateTo} />;
       case 'dashboard':
-        return <Dashboard setActiveItem={setActiveItem} />;
+        return <Dashboard setActiveItem={navigateTo} />;
       case 'users':
         return <UserManagement />;
       case 'hr-management':
@@ -99,11 +115,11 @@ function AppContent() {
       case 'inventory':
         return <Inventory />;
       case 'procurement':
-        return <Procurement setActiveItem={setActiveItem} />;
+        return <Procurement setActiveItem={navigateTo} />;
       case 'pr-status':
-        return <PRStatusDashboard onBack={() => setActiveItem('dashboard')} setActiveItem={setActiveItem} />;
+        return <PRStatusDashboard onBack={goBack} setActiveItem={navigateTo} />;
       case 'po-status':
-        return <POStatusDashboard onBack={() => setActiveItem('dashboard')} setActiveItem={setActiveItem} />;
+        return <POStatusDashboard onBack={goBack} setActiveItem={navigateTo} />;
       case 'approvals':
         return <ManagerApproval />;
       case 'reports':
@@ -115,11 +131,11 @@ function AppContent() {
       case 'task-management':
         return <TaskManagement />;
       case 'suppliers':
-        return <SupplierManagement onBack={() => setActiveItem('procurement')} />;
+        return <SupplierManagement onBack={goBack} />;
       case 'combo-management':
-        return <ComboManagement onBack={() => setActiveItem('inventory')} />;
+        return <ComboManagement onBack={goBack} />;
       case 'combo-profit':
-        return <ComboProfitReport onBack={() => setActiveItem('reports')} />;
+        return <ComboProfitReport onBack={goBack} />;
       case 'cameras':
         switch (cameraPage) {
           case 'overview':
@@ -160,7 +176,7 @@ function AppContent() {
           />
         );
       default:
-        return <FeaturesHub onNavigate={setActiveItem} />;
+        return <FeaturesHub onNavigate={navigateTo} />;
     }
   };
 
@@ -173,9 +189,9 @@ function AppContent() {
           : 'bg-white border-gray-200'
       }`}>
         <div className="flex items-center space-x-3">
-          {activeItem !== 'hub' && activeItem !== 'pos' && (
+          {navHistory.length > 0 && (
             <button
-              onClick={() => setActiveItem('hub')}
+              onClick={goBack}
               className={`flex items-center space-x-1 px-2 py-1.5 rounded-lg transition-colors ${
                 isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'
               }`}
@@ -261,7 +277,7 @@ function AppContent() {
       <div className="flex-1 overflow-auto">
         {renderContent()}
       </div>
-      <Sidebar activeItem={activeItem} onItemClick={setActiveItem} />
+      <Sidebar activeItem={activeItem} onItemClick={(item) => { setNavHistory([]); setActiveItem(item); }} />
     </div>
   );
 }
