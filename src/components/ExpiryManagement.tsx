@@ -45,15 +45,43 @@ interface ItemSummary {
   batches: BatchItem[];
 }
 
-// Mock batch data
-const mockBatches: BatchItem[] = [];
+function loadBatchesFromGRHistory(): BatchItem[] {
+  try {
+    const grHistory: any[] = JSON.parse(localStorage.getItem('pos_gr_history') || '[]');
+    const batches: BatchItem[] = [];
+    grHistory.forEach((gr: any) => {
+      (gr.items || []).forEach((gi: any) => {
+        (gi.batches || []).forEach((b: any) => {
+          if (b.expiryDate) {
+            batches.push({
+              id: b.id || `${gr.id}-${gi.itemCode}-${b.batchNumber}`,
+              itemName: gi.itemName || gi.itemCode,
+              itemCode: gi.itemCode || '',
+              batchNumber: b.batchNumber || '',
+              quantity: b.quantity || 0,
+              expiryDate: b.expiryDate,
+              receivedDate: gr.grDate || new Date().toISOString().split('T')[0],
+              location: b.locationName || gr.deliveryLocation || 'Stock Room',
+              supplier: gr.supplierName || '',
+              status: 'active' as const,
+              unitPrice: gi.unitPrice || 0
+            });
+          }
+        });
+      });
+    });
+    return batches;
+  } catch {
+    return [];
+  }
+}
 
 interface ExpiryManagementProps {
   onBack: () => void;
 }
 
 export default function ExpiryManagement({ onBack }: ExpiryManagementProps) {
-  const [batches, setBatches] = useState<BatchItem[]>(mockBatches);
+  const [batches, setBatches] = useState<BatchItem[]>(() => loadBatchesFromGRHistory());
   const [searchTerm, setSearchTerm] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showBatchDetails, setShowBatchDetails] = useState<string | null>(null);

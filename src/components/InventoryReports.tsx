@@ -116,50 +116,29 @@ export default function InventoryReports({ onBack }: InventoryReportsProps) {
   useEffect(() => {
     // Load stock data
     const items: any[] = JSON.parse(localStorage.getItem('pos_items') || '[]');
-    const stockLevels: any[] = JSON.parse(localStorage.getItem('pos_stock_levels') || '[]');
+    const stockLevels: Record<string, number> = JSON.parse(localStorage.getItem('pos_stock_levels') || '{}');
 
-    const mapped = items.flatMap((item: any) => {
-      const levels = stockLevels.filter((sl: any) => sl.itemId === item.id);
-      if (levels.length === 0) {
-        return [{
-          id: item.id,
-          itemName: item.name,
-          itemSku: item.sku,
-          unit: item.unit || 'pcs',
-          category: item.category || 'Uncategorized',
-          quantity: 0,
-          unitPrice: item.cost_price || 0,
-          sellingPrice: item.selling_price || 0,
-          totalValue: 0,
-          minStockLevel: 10,
-          location: 'N/A',
-          supplier: 'N/A',
-          expiryDate: null,
-          lastMovementDate: new Date().toISOString(),
-          daysInStock: 0,
-          salesLast30Days: 0,
-          movementType: 'slow'
-        }];
-      }
-      return levels.map((sl: any) => ({
-        id: `${item.id}-${sl.store}`,
-        itemName: item.name,
+    const mapped = items.map((item: any) => {
+      const qty = stockLevels[item.id] || 0;
+      return {
+        id: item.id,
+        itemName: item.name || item.name_en,
         itemSku: item.sku,
         unit: item.unit || 'pcs',
         category: item.category || 'Uncategorized',
-        quantity: Number(sl.quantity) || 0,
-        unitPrice: item.cost_price || 0,
-        sellingPrice: item.selling_price || 0,
-        totalValue: (Number(sl.quantity) || 0) * (item.cost_price || 0),
-        minStockLevel: 10,
-        location: sl.store || 'Unknown',
-        supplier: 'N/A',
-        expiryDate: sl.expiryDate || null,
-        lastMovementDate: sl.updatedAt || new Date().toISOString(),
-        daysInStock: Math.floor((Date.now() - new Date(sl.updatedAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
+        quantity: qty,
+        unitPrice: item.standard_cost || item.cost || 0,
+        sellingPrice: item.price || 0,
+        totalValue: qty * (item.standard_cost || item.cost || 0),
+        minStockLevel: item.min_stock || 10,
+        location: 'Main Branch',
+        supplier: (item.suppliers && item.suppliers[0]?.supplierName) || 'N/A',
+        expiryDate: null,
+        lastMovementDate: item.updated_at || new Date().toISOString(),
+        daysInStock: Math.floor((Date.now() - new Date(item.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
         salesLast30Days: 0,
-        movementType: 'slow'
-      }));
+        movementType: qty === 0 ? 'out' : 'slow'
+      };
     });
     setStockData(mapped);
 

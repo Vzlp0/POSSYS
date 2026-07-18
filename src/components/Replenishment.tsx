@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, ArrowRight, Search, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 interface ShelfItemNeedingRefill {
   id: string;
@@ -54,54 +53,56 @@ export default function Replenishment({ onBack }: ReplenishmentProps) {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = () => {
     try {
       setLoading(true);
+      const items: any[] = JSON.parse(localStorage.getItem('pos_items') || '[]');
+      const stockLevels: Record<string, number> = JSON.parse(localStorage.getItem('pos_stock_levels') || '{}');
+      const grHistory: any[] = JSON.parse(localStorage.getItem('pos_gr_history') || '[]');
 
-      const [shelfItemsResult, storageResult] = await Promise.all([
-        supabase
-          .from('shelf_items')
-          .select(`
-            *,
-            shelves (
-              branch_name,
-              section_name,
-              shelf_code
-            ),
-            items (
-              name,
-              sku,
-              name_en
-            )
-          `)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('storage_batches')
-          .select('*')
-          .gt('qty_on_hand', 0)
-      ]);
+      // Build storage batches from GR history
+      const batches: StorageBatch[] = grHistory.flatMap((gr: any) =>
+        (gr.items || []).flatMap((gi: any) =>
+          (gi.batches || []).map((b: any) => ({
+            id: b.id || `${gr.id}-${gi.itemCode}-${b.batchNumber}`,
+            branch_name: gr.deliveryLocation || 'Main Branch',
+            location_name: b.locationName || 'Stock Room',
+            item_id: gi.itemId || gi.id,
+            batch_number: b.batchNumber || null,
+            qty_on_hand: b.quantity || 0,
+            expiry_date: b.expiryDate || null
+          }))
+        )
+      );
+      setStorageBatches(batches);
 
-      if (shelfItemsResult.error) throw shelfItemsResult.error;
-      if (storageResult.error) throw storageResult.error;
+      // Items needing refill: items whose stock < min level (default 10)
+      const needingRefill: ShelfItemNeedingRefill[] = items
+        .map((item: any) => {
+          const qty = stockLevels[item.id] || 0;
+          const min = item.min_stock || 10;
+          return {
+            id: item.id,
+            shelf_id: '',
+            item_id: item.id,
+            max_capacity: min,
+            current_qty: qty,
+            needed_qty: Math.max(0, min - qty),
+            shelves: { branch_name: 'Main Branch', section_name: item.category || 'General', shelf_code: item.sku },
+            items: { name: item.name, sku: item.sku, name_en: item.name_en }
+          };
+        })
+        .filter(i => i.current_qty < i.max_capacity);
 
-      const itemsNeedingRefill = (shelfItemsResult.data || [])
-        .filter(si => si.current_qty < si.max_capacity)
-        .map(si => ({
-          ...si,
-          needed_qty: si.max_capacity - si.current_qty
-        }));
-
-      setShelfItems(itemsNeedingRefill);
-      setStorageBatches(storageResult.data || []);
+      setShelfItems(needingRefill);
     } catch (error) {
       console.error('Error fetching data:', error);
-      alert('Failed to load replenishment data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefillFromStorage = async (shelfItemId: string) => {
+  const handleRefillFromStorage = (shelfItemId: string) => {
     if (!refillData.storage_batch_id || refillData.refill_qty <= 0) {
       alert('Please select a storage batch and enter a valid quantity');
       return;
@@ -115,29 +116,18 @@ export default function Replenishment({ onBack }: ReplenishmentProps) {
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .rpc('move_storage_to_shelf', {
-          p_storage_batch_id: refillData.storage_batch_id,
-          p_shelf_item_id: shelfItemId,
-          p_qty: refillData.refill_qty
-        });
-
-      if (error) throw error;
-
-      const result = data as any;
-      if (result.success) {
-        alert('Shelf refilled successfully');
-        setShowRefillModal(null);
-        setRefillData({ storage_batch_id: '', refill_qty: 0 });
-        fetchData();
-      } else {
-        alert(result.error || 'Failed to refill shelf');
-      }
-    } catch (error) {
-      console.error('Error refilling shelf:', error);
-      alert('Failed to refill shelf from storage');
+    // Update stock levels
+    const stockLevels: Record<string, number> = JSON.parse(localStorage.getItem('pos_stock_levels') || '{}');
+    const item = shelfItems.find(s => s.id === shelfItemId);
+    if (item) {
+      stockLevels[item.item_id] = (stockLevels[item.item_id] || 0) + refillData.refill_qty;
+      localStorage.setItem('pos_stock_levels', JSON.stringify(stockLevels));
     }
+
+    alert('Shelf refilled successfully');
+    setShowRefillModal(null);
+    setRefillData({ storage_batch_id: '', refill_qty: 0 });
+    fetchData();
   };
 
   const getStatus = (currentQty: number, maxCapacity: number) => {
