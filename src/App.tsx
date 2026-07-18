@@ -35,7 +35,7 @@ import ComboManagement from './components/ComboManagement';
 import ComboProfitReport from './components/ComboProfitReport';
 import FeaturesHub from './components/FeaturesHub';
 import ThemeToggle from './components/ThemeToggle';
-import { LogOut, User, ChevronDown, Users } from 'lucide-react';
+import { LogOut, User, ChevronDown, Users, ArrowLeft } from 'lucide-react';
 
 function AppContent() {
   const { user, logout, switchUser, isLoading } = useAuth();
@@ -173,6 +173,17 @@ function AppContent() {
           : 'bg-white border-gray-200'
       }`}>
         <div className="flex items-center space-x-3">
+          {activeItem !== 'hub' && activeItem !== 'pos' && (
+            <button
+              onClick={() => setActiveItem('hub')}
+              className={`flex items-center space-x-1 px-2 py-1.5 rounded-lg transition-colors ${
+                isDarkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm font-medium">Back</span>
+            </button>
+          )}
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">POS System</h1>
         </div>
 
