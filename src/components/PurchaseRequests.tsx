@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Calendar, User, Building2, AlertCircle, CheckCircle, XCircle, FileText, ArrowLeft, Save, X, Trash2, Eye, Edit, RotateCcw } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+
+const lsGet = <T,>(key: string, fallback: T): T => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+};
+const lsSet = (key: string, val: unknown) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 import { getStatusLabel, getStatusColor } from '../lib/prHelpers';
 import PRDetailView from './PRDetailView';
 
@@ -82,19 +86,14 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
     fetchRequisitions();
   }, [filterStatus, filterBranch, filterRequester]);
 
-  const fetchBranches = async () => {
+  const fetchBranches = () => {
     try {
-      const { data, error } = await supabase
-        .from('branches')
-        .select('id, name, code')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      setBranches(data || []);
-
-      if (data && data.length > 0 && !formData.branch_id) {
-        setFormData(prev => ({ ...prev, branch_id: data[0].id }));
+      const data: Array<{ id: string; name: string; code: string; is_active?: boolean }> =
+        lsGet('pos_branches', []);
+      const active = data.filter(b => b.is_active !== false);
+      setBranches(active);
+      if (active.length > 0 && !formData.branch_id) {
+        setFormData(prev => ({ ...prev, branch_id: active[0].id }));
       }
     } catch (error) {
       console.error('Error fetching branches:', error);
@@ -110,130 +109,55 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
     }
   };
 
-  const fetchItems = async () => {
+  const fetchItems = () => {
     try {
-      const { data, error } = await supabase
-        .from('items')
-        .select('id, name, sku, unit, cost')
-        .eq('show_in_pos', true)
-        .order('name');
-
-      if (error) throw error;
-      setItems(data || []);
+      const data: any[] = lsGet('pos_items', []);
+      setItems(data.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     } catch (error) {
       console.error('Error fetching items:', error);
     }
   };
 
-  const fetchRequisitions = async () => {
+  const fetchRequisitions = () => {
     try {
       setLoading(true);
-      console.log('=== Fetching Purchase Requisitions ===');
-      console.log('Filters:', { filterStatus, filterBranch, filterRequester });
+      const allUsers: any[] = lsGet('pos_users', []);
+      const allBranches: any[] = lsGet('pos_branches', []);
+      let data: any[] = lsGet('pos_purchase_requisitions', []);
 
-      // Fetch PRs without joins - we'll match data in React
-      let query = supabase
-        .from('purchase_requisitions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (filterStatus !== 'all') data = data.filter(pr => pr.status === filterStatus);
+      if (filterBranch !== 'all') data = data.filter(pr => pr.branch_id === filterBranch);
+      if (filterRequester !== 'all') data = data.filter(pr => pr.requester_id === filterRequester);
 
-      if (filterStatus !== 'all') {
-        query = query.eq('status', filterStatus);
-      }
+      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      if (filterBranch !== 'all') {
-        query = query.eq('branch_id', filterBranch);
-      }
+      const enriched = data.map(pr => {
+        const requester = allUsers.find(u => u.id === pr.requester_id);
+        const branch = allBranches.find(b => b.id === pr.branch_id);
+        return {
+          ...pr,
+          requester: requester ? { id: requester.id, username: requester.username || '', email: requester.email || '' } : undefined,
+          branch: branch ? { id: branch.id, name: branch.name, code: branch.code } : undefined,
+          items: pr.items || []
+        };
+      });
 
-      if (filterRequester !== 'all') {
-        query = query.eq('requester_id', filterRequester);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('✗ Error fetching PRs:', error);
-        throw error;
-      }
-
-      console.log('✓ Fetched', data?.length || 0, 'PRs');
-
-      // Fetch items and enrich with user/branch data from already loaded lists
-      const prsWithItems = await Promise.all(
-        (data || []).map(async (pr) => {
-          console.log(`Fetching items for PR ${pr.pr_number}...`);
-          const { data: items, error: itemsError } = await supabase
-            .from('purchase_requisition_items')
-            .select(`
-              id,
-              quantity,
-              unit,
-              estimated_cost,
-              item:items(id, name, sku)
-            `)
-            .eq('pr_id', pr.id);
-
-          if (itemsError) {
-            console.error(`✗ Error fetching items for PR ${pr.pr_number}:`, itemsError);
-          } else {
-            console.log(`✓ Fetched ${items?.length || 0} items for PR ${pr.pr_number}`);
-          }
-
-          // Match user and branch from already loaded data
-          const requester = users.find(u => u.id === pr.requester_id);
-          const branch = branches.find(b => b.id === pr.branch_id);
-
-          return {
-            ...pr,
-            items: items || [],
-            requester: requester ? {
-              id: requester.id,
-              email: requester.email || '',
-              username: requester.username || '',
-              first_name: '',
-              last_name: ''
-            } : undefined,
-            branch: branch ? {
-              id: branch.id,
-              name: branch.name,
-              code: branch.code
-            } : undefined
-          };
-        })
-      );
-
-      console.log('✓ Final PRs with items:', prsWithItems);
-      setRequisitions(prsWithItems);
-      console.log('=== Fetch Complete ===');
+      setRequisitions(enriched);
     } catch (error: any) {
-      console.error('=== Fetch Failed ===');
-      console.error('Error:', error);
-      console.error('Error message:', error?.message);
-      console.error('Error details:', error?.details);
       alert(`Failed to load requisitions: ${error?.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const generatePRNumber = async () => {
-    const { data, error } = await supabase
-      .from('purchase_requisitions')
-      .select('pr_number')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (error || !data || data.length === 0) {
-      return 'PR-0001';
-    }
-
-    const lastPR = data[0].pr_number;
-    const match = lastPR.match(/PR-(\d+)/);
-    if (match) {
-      const nextNum = parseInt(match[1]) + 1;
-      return `PR-${String(nextNum).padStart(4, '0')}`;
-    }
-    return 'PR-0001';
+  const generatePRNumber = (): string => {
+    const all: any[] = lsGet('pos_purchase_requisitions', []);
+    if (all.length === 0) return 'PR-0001';
+    const nums = all.map(pr => {
+      const m = (pr.pr_number || '').match(/PR-(\d+)/);
+      return m ? parseInt(m[1]) : 0;
+    });
+    return `PR-${String(Math.max(...nums) + 1).padStart(4, '0')}`;
   };
 
   const handleAddItem = () => {
@@ -268,38 +192,15 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
     }));
   };
 
-  const handleSavePR = async () => {
-    console.log('=== Starting PR Save ===');
-    console.log('User:', user);
-    console.log('Form Data:', formData);
-
-    if (!user?.id) {
-      const errorMsg = 'Error: User not logged in. Please refresh and log in again.';
-      console.error(errorMsg);
-      alert(errorMsg);
-      return;
-    }
-
-    if (!formData.branch_id) {
-      const errorMsg = 'Please select a branch';
-      console.error(errorMsg);
-      alert(errorMsg);
-      return;
-    }
-
-    if (formData.items.length === 0) {
-      const errorMsg = 'Please add at least one item to the requisition';
-      console.error(errorMsg);
-      alert(errorMsg);
-      return;
-    }
+  const handleSavePR = () => {
+    if (!user?.id) { alert('User not logged in'); return; }
+    if (!formData.branch_id) { alert('Please select a branch'); return; }
+    if (formData.items.length === 0) { alert('Please add at least one item'); return; }
 
     try {
-      console.log('Step 1: Generating PR Number...');
-      const prNumber = await generatePRNumber();
-      console.log('✓ Generated PR Number:', prNumber);
-
-      const prInsertData = {
+      const prNumber = generatePRNumber();
+      const newPR = {
+        id: `pr_${Date.now()}`,
         pr_number: prNumber,
         pr_date: new Date().toISOString().split('T')[0],
         requester_id: user.id,
@@ -307,50 +208,22 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
         status: 'pending',
         priority: formData.priority,
         required_date: formData.required_date,
-        notes: formData.notes || null
+        notes: formData.notes || '',
+        created_at: new Date().toISOString(),
+        items: formData.items.map((item, idx) => ({
+          id: `pri_${Date.now()}_${idx}`,
+          item_id: item.item_id,
+          quantity: item.quantity,
+          unit: item.unit,
+          estimated_cost: item.estimated_cost || 0,
+          item: { name: item.item_name, sku: item.item_sku }
+        }))
       };
-      console.log('Step 2: Inserting PR with data:', prInsertData);
 
-      const { data: prData, error: prError } = await supabase
-        .from('purchase_requisitions')
-        .insert(prInsertData)
-        .select()
-        .single();
+      const all: any[] = lsGet('pos_purchase_requisitions', []);
+      lsSet('pos_purchase_requisitions', [...all, newPR]);
 
-      if (prError) {
-        console.error('✗ PR Insert Error:', prError);
-        console.error('Error details:', JSON.stringify(prError, null, 2));
-        throw new Error(`Database error: ${prError.message} (Code: ${prError.code})`);
-      }
-
-      console.log('✓ PR created successfully:', prData);
-
-      const itemsToInsert = formData.items.map(item => ({
-        pr_id: prData.id,
-        item_id: item.item_id,
-        quantity: item.quantity,
-        unit: item.unit,
-        estimated_cost: item.estimated_cost || 0
-      }));
-
-      console.log('Step 3: Inserting', itemsToInsert.length, 'items:', itemsToInsert);
-
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('purchase_requisition_items')
-        .insert(itemsToInsert)
-        .select();
-
-      if (itemsError) {
-        console.error('✗ Items Insert Error:', itemsError);
-        console.error('Error details:', JSON.stringify(itemsError, null, 2));
-        throw new Error(`Database error: ${itemsError.message} (Code: ${itemsError.code})`);
-      }
-
-      console.log('✓ Items inserted successfully:', itemsData);
-      console.log('=== PR Save Complete ===');
-
-      alert(`✓ Purchase Requisition ${prNumber} created successfully!\n\nRedirecting to PR Status Dashboard...`);
-
+      alert(`Purchase Requisition ${prNumber} created successfully!`);
       setShowAddForm(false);
       setFormData({
         branch_id: branches[0]?.id || '',
@@ -359,91 +232,35 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
         notes: '',
         items: []
       });
-
-      // Redirect to PR Status Dashboard
-      if (onRedirectToPRStatus) {
-        setTimeout(() => {
-          onRedirectToPRStatus();
-        }, 500);
-      } else {
-        // Fallback: refresh list if no redirect callback
-        console.log('Refreshing requisitions list...');
-        await fetchRequisitions();
-        console.log('✓ Requisitions list refreshed');
-      }
-    } catch (error: any) {
-      console.error('=== PR Save Failed ===');
-      console.error('Error:', error);
-      console.error('Error stack:', error.stack);
-
-      let errorMessage = 'Failed to create Purchase Requisition.\n\n';
-
-      if (error.message) {
-        errorMessage += `Error: ${error.message}\n`;
-      }
-
-      if (error.code) {
-        errorMessage += `Code: ${error.code}\n`;
-      }
-
-      errorMessage += '\nPlease check the browser console for more details.';
-
-      alert(errorMessage);
-    }
-  };
-
-  const handleApprove = async (prId: string) => {
-    if (!confirm('Are you sure you want to approve this Purchase Requisition?\n\nOnce approved, a PO can be created from this PR.')) {
-      return;
-    }
-
-    try {
-      // Change status to 'pending_po' to enable PO creation
-      const { error } = await supabase
-        .from('purchase_requisitions')
-        .update({
-          status: 'pending_po',
-          approved_by: user?.id,
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', prId);
-
-      if (error) throw error;
-
-      alert('Purchase Requisition approved successfully!\n\nPO can now be created from this PR.');
       fetchRequisitions();
-    } catch (error) {
-      console.error('Error approving PR:', error);
-      alert('Failed to approve Purchase Requisition');
+    } catch (error: any) {
+      alert(`Failed to create Purchase Requisition: ${error?.message || 'Unknown error'}`);
     }
   };
 
-  const handleReject = async (prId: string) => {
+  const handleApprove = (prId: string) => {
+    if (!confirm('Are you sure you want to approve this Purchase Requisition?')) return;
+    const all: any[] = lsGet('pos_purchase_requisitions', []);
+    lsSet('pos_purchase_requisitions', all.map(pr =>
+      pr.id === prId ? { ...pr, status: 'pending_po', approved_by: user?.id, approved_at: new Date().toISOString() } : pr
+    ));
+    alert('Purchase Requisition approved! PO can now be created.');
+    fetchRequisitions();
+  };
+
+  const handleReject = (prId: string) => {
     const reason = prompt('Please enter rejection reason:');
     if (!reason) return;
-
-    try {
-      const pr = requisitions.find(r => r.id === prId);
-      const { error } = await supabase
-        .from('purchase_requisitions')
-        .update({
-          status: 'rejected',
-          approved_by: user?.id,
-          approved_at: new Date().toISOString(),
-          notes: `${pr?.notes || ''}\n\nREJECTION REASON: ${reason}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', prId);
-
-      if (error) throw error;
-
-      alert('Purchase Requisition rejected successfully!');
-      fetchRequisitions();
-    } catch (error) {
-      console.error('Error rejecting PR:', error);
-      alert('Failed to reject Purchase Requisition');
-    }
+    const all: any[] = lsGet('pos_purchase_requisitions', []);
+    const pr = all.find(p => p.id === prId);
+    lsSet('pos_purchase_requisitions', all.map(p =>
+      p.id === prId ? {
+        ...p, status: 'rejected', approved_by: user?.id, approved_at: new Date().toISOString(),
+        notes: `${pr?.notes || ''}\n\nREJECTION REASON: ${reason}`
+      } : p
+    ));
+    alert('Purchase Requisition rejected.');
+    fetchRequisitions();
   };
 
   const getPriorityColor = (priority: string) => {

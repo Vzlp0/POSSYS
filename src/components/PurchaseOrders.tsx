@@ -16,7 +16,11 @@ import {
   Search
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+
+const lsGet = <T,>(key: string, fallback: T): T => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+};
+const lsSet = (key: string, val: unknown) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 
 interface PurchaseOrder {
   id: string;
@@ -110,204 +114,91 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
     fetchData();
   }, [statusFilter, prStatusFilter]);
 
-  const fetchData = async () => {
+  const fetchData = () => {
     setLoading(true);
-    await Promise.all([
-      fetchPurchaseOrders(),
-      fetchPRs(),
-      fetchSuppliers(),
-      fetchBranches(),
-      fetchItems()
-    ]);
+    fetchPurchaseOrders();
+    fetchPRs();
+    fetchSuppliers();
+    fetchBranches();
+    fetchItems();
     setLoading(false);
   };
 
-  const fetchPurchaseOrders = async () => {
+  const fetchPurchaseOrders = () => {
     try {
-      let query = supabase
-        .from('purchase_orders')
-        .select(`
-          *,
-          supplier:supplier_id(name),
-          branch:branch_id(name),
-          pr:pr_id(pr_number, status)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const posWithItems = await Promise.all(
-        (data || []).map(async (po) => {
-          const { data: itemsData } = await supabase
-            .from('purchase_order_items')
-            .select(`
-              id,
-              quantity,
-              unit,
-              unit_cost,
-              subtotal,
-              item:item_id(id, name, sku)
-            `)
-            .eq('po_id', po.id);
-
-          return {
-            ...po,
-            supplier_name: po.supplier?.name,
-            branch_name: po.branch?.name,
-            pr_number: po.pr?.pr_number,
-            items: (itemsData || []).map((item: any) => ({
-              id: item.id,
-              item_id: item.item?.id,
-              item_name: item.item?.name,
-              item_sku: item.item?.sku,
-              quantity: item.quantity,
-              unit: item.unit,
-              unit_cost: item.unit_cost,
-              subtotal: item.subtotal
-            }))
-          };
-        })
-      );
-
-      setPurchaseOrders(posWithItems as PurchaseOrder[]);
+      let data: any[] = lsGet('pos_purchase_orders', []);
+      if (statusFilter !== 'all') data = data.filter(po => po.status === statusFilter);
+      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setPurchaseOrders(data as PurchaseOrder[]);
     } catch (error) {
       console.error('Error fetching POs:', error);
     }
   };
 
-  const fetchPRs = async () => {
+  const fetchPRs = () => {
     try {
-      console.log('=== Fetching PRs for PO ===');
-      console.log('PR Status Filter:', prStatusFilter);
+      const allUsers: any[] = lsGet('pos_users', []);
+      const allBranches: any[] = lsGet('pos_branches', []);
+      let data: any[] = lsGet('pos_purchase_requisitions', []);
 
-      let query = supabase
-        .from('purchase_requisitions')
-        .select(`
-          *,
-          requester:requester_id(username),
-          branch:branch_id(name)
-        `)
-        .order('pr_date', { ascending: false });
+      const allowedStatuses = prStatusFilter === 'all'
+        ? ['approved', 'pending_po']
+        : [prStatusFilter];
+      data = data.filter(pr => allowedStatuses.includes(pr.status));
+      data.sort((a, b) => new Date(b.pr_date || b.created_at).getTime() - new Date(a.pr_date || a.created_at).getTime());
 
-      if (prStatusFilter === 'approved') {
-        console.log('Filtering for approved PRs only');
-        query = query.eq('status', 'approved');
-      } else if (prStatusFilter === 'pending_po') {
-        console.log('Filtering for pending_po PRs only');
-        query = query.eq('status', 'pending_po');
-      } else if (prStatusFilter === 'po_created') {
-        console.log('Filtering for po_created PRs only');
-        query = query.eq('status', 'po_created');
-      } else {
-        console.log('Filtering for approved and pending_po PRs');
-        query = query.in('status', ['approved', 'pending_po']);
-      }
+      const enriched = data.map(pr => {
+        const requester = allUsers.find(u => u.id === pr.requester_id);
+        const branch = allBranches.find(b => b.id === pr.branch_id);
+        return {
+          id: pr.id,
+          pr_number: pr.pr_number,
+          requester_name: requester?.username || 'Unknown',
+          branch_id: pr.branch_id,
+          branch_name: branch?.name || 'Unknown',
+          status: pr.status,
+          priority: pr.priority,
+          pr_date: pr.pr_date || pr.created_at,
+          items: (pr.items || []).map((item: any) => ({
+            id: item.id,
+            item_id: item.item_id,
+            item_name: item.item?.name || item.item_name,
+            item_sku: item.item?.sku || item.item_sku,
+            quantity: item.quantity,
+            unit: item.unit,
+            estimated_cost: item.estimated_cost
+          }))
+        };
+      });
 
-      const { data, error } = await query;
-      if (error) {
-        console.error('Error from Supabase:', error);
-        throw error;
-      }
-
-      console.log('Found PRs:', data?.length || 0);
-      if (data && data.length > 0) {
-        console.log('PR details:', data.map(pr => ({ pr_number: pr.pr_number, status: pr.status })));
-      }
-
-      const prsWithItems = await Promise.all(
-        (data || []).map(async (pr) => {
-          const { data: itemsData, error: itemsError } = await supabase
-            .from('purchase_requisition_items')
-            .select(`
-              id,
-              quantity,
-              unit,
-              estimated_cost,
-              item:item_id(id, name, sku)
-            `)
-            .eq('pr_id', pr.id);
-
-          if (itemsError) {
-            console.error(`Error fetching items for PR ${pr.pr_number}:`, itemsError);
-          }
-
-          console.log(`PR ${pr.pr_number} has ${itemsData?.length || 0} items`);
-
-          return {
-            id: pr.id,
-            pr_number: pr.pr_number,
-            requester_name: pr.requester?.username || 'Unknown',
-            branch_id: pr.branch_id,
-            branch_name: pr.branch?.name || 'Unknown',
-            status: pr.status,
-            priority: pr.priority,
-            pr_date: pr.pr_date,
-            items: (itemsData || []).map((item: any) => ({
-              id: item.id,
-              item_id: item.item?.id,
-              item_name: item.item?.name,
-              item_sku: item.item?.sku,
-              quantity: item.quantity,
-              unit: item.unit,
-              estimated_cost: item.estimated_cost
-            }))
-          };
-        })
-      );
-
-      console.log('Setting PRs state with', prsWithItems.length, 'PRs');
-      setPRs(prsWithItems as PR[]);
-      console.log('=== Fetch Complete ===');
+      setPRs(enriched as PR[]);
     } catch (error: any) {
       console.error('Error fetching PRs:', error);
-      console.error('Error message:', error?.message);
-      console.error('Error details:', error?.details);
-      alert(`Failed to load PRs: ${error?.message || 'Unknown error'}`);
     }
   };
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = () => {
     try {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      setSuppliers(data || []);
+      const data: any[] = lsGet('pos_suppliers', []);
+      setSuppliers(data.filter(s => s.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     } catch (error) {
       console.error('Error fetching suppliers:', error);
     }
   };
 
-  const fetchBranches = async () => {
+  const fetchBranches = () => {
     try {
-      const { data, error } = await supabase
-        .from('branches')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      setBranches(data || []);
+      const data: any[] = lsGet('pos_branches', []);
+      setBranches(data.filter(b => b.is_active !== false));
     } catch (error) {
       console.error('Error fetching branches:', error);
     }
   };
 
-  const fetchItems = async () => {
+  const fetchItems = () => {
     try {
-      const { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .eq('show_in_pos', true)
-        .order('name');
-      if (error) throw error;
-      setItems(data || []);
+      const data: any[] = lsGet('pos_items', []);
+      setItems(data.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     } catch (error) {
       console.error('Error fetching items:', error);
     }
@@ -361,147 +252,85 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
     setPOForm({ ...poForm, items: updatedItems });
   };
 
-  const handleSavePO = async () => {
+  const handleSavePO = () => {
     try {
       const isManualPO = !selectedPR;
 
       if (!isManualPO && selectedPR?.status !== 'pending_po') {
-        alert('Cannot create PO: PR must be approved first (status: pending_po)');
+        alert('Cannot create PO: PR must be approved first');
         return;
       }
+      if (!poForm.supplier_id) { alert('Please select a supplier'); return; }
+      if (poForm.items.length === 0) { alert('Please add at least one item'); return; }
 
-      if (!poForm.supplier_id) {
-        alert('Please select a supplier');
-        return;
-      }
+      const totalAmount = poForm.items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0);
 
-      if (poForm.items.length === 0) {
-        alert('Please add at least one item');
-        return;
-      }
-
-      if (isManualPO && !user?.id) {
-        alert('User information required for manual PO creation');
-        return;
-      }
-
-      const totalAmount = poForm.items.reduce(
-        (sum, item) => sum + item.quantity * item.unit_cost,
-        0
-      );
-
-      const { data: lastPO } = await supabase
-        .from('purchase_orders')
-        .select('po_number')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      let nextNumber = 1;
-      if (lastPO && lastPO.length > 0) {
-        const match = lastPO[0].po_number.match(/PO-(\d+)/);
-        if (match) {
-          nextNumber = parseInt(match[1]) + 1;
-        }
-      }
-      const poNumber = isManualPO 
+      const allPOs: any[] = lsGet('pos_purchase_orders', []);
+      const nums = allPOs.map(po => {
+        const m = (po.po_number || '').match(/PO-(?:MANUAL-)?(\d+)/);
+        return m ? parseInt(m[1]) : 0;
+      });
+      const nextNumber = nums.length ? Math.max(...nums) + 1 : 1;
+      const poNumber = isManualPO
         ? `PO-MANUAL-${String(nextNumber).padStart(4, '0')}`
         : `PO-${String(nextNumber).padStart(4, '0')}`;
 
-      // For manual PO, we need to select a branch
-      let branchId = selectedPR?.branch_id;
-      if (isManualPO && !branchId) {
-        // Use first active branch as default for manual PO
-        const { data: branchesData } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('is_active', true)
-          .limit(1);
-        branchId = branchesData?.[0]?.id;
-        if (!branchId) {
-          alert('No active branch found. Please create a branch first.');
-          return;
-        }
-      }
+      const branchId = selectedPR?.branch_id || branches[0]?.id;
+      if (!branchId) { alert('No branch found. Please create a branch first.'); return; }
 
-      const poInsertData: any = {
+      const supplier = suppliers.find(s => s.id === poForm.supplier_id);
+
+      const newPO: PurchaseOrder = {
+        id: `po_${Date.now()}`,
         po_number: poNumber,
         supplier_id: poForm.supplier_id,
+        supplier_name: supplier?.name || supplier?.supplierName || '',
         branch_id: branchId,
+        branch_name: branches.find(b => b.id === branchId)?.name || '',
+        pr_id: selectedPR?.id,
+        pr_number: selectedPR?.pr_number,
         status: 'draft',
         order_date: new Date().toISOString().split('T')[0],
-        expected_delivery_date: poForm.expected_delivery_date || null,
+        expected_delivery_date: poForm.expected_delivery_date || undefined,
         total_amount: totalAmount,
         payment_terms: poForm.payment_terms,
-        notes: poForm.notes
+        notes: isManualPO
+          ? `${poForm.notes || ''}\n\n[MANUAL PO by ${user?.username || user?.email}]`
+          : poForm.notes,
+        created_at: new Date().toISOString(),
+        items: poForm.items.map((item, idx) => ({
+          id: `poi_${Date.now()}_${idx}`,
+          item_id: item.item_id,
+          item_name: item.item_name,
+          item_sku: item.item_sku,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          subtotal: item.quantity * item.unit_cost
+        }))
       };
 
-      // Add PR reference only if not manual PO
+      lsSet('pos_purchase_orders', [...allPOs, newPO]);
+
+      // Update PR status if linked
       if (!isManualPO && selectedPR) {
-        poInsertData.pr_id = selectedPR.id;
+        const allPRs: any[] = lsGet('pos_purchase_requisitions', []);
+        lsSet('pos_purchase_requisitions', allPRs.map(pr =>
+          pr.id === selectedPR.id ? { ...pr, status: 'po_created' } : pr
+        ));
       }
 
-      // Add manual PO flags
-      if (isManualPO) {
-        poInsertData.manual_po = true;
-        poInsertData.created_by_override = user?.id;
-        poInsertData.override_timestamp = new Date().toISOString();
-        poInsertData.notes = `${poForm.notes || ''}\n\n[MANUAL PO - Created without PR approval by ${user?.username || user?.email} on ${new Date().toLocaleString()}]`;
-      }
+      alert(isManualPO
+        ? 'Manual Purchase Order created successfully!'
+        : 'Purchase Order created successfully!');
 
-      const { data: poData, error: poError } = await supabase
-        .from('purchase_orders')
-        .insert(poInsertData)
-        .select()
-        .single();
-
-      if (poError) throw poError;
-
-      const itemsToInsert = poForm.items.map((item) => ({
-        po_id: poData.id,
-        item_id: item.item_id,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_cost: item.unit_cost,
-        subtotal: item.quantity * item.unit_cost
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('purchase_order_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
-
-      // Update PR status only if not manual PO
-      if (!isManualPO && selectedPR) {
-        const { error: updateError } = await supabase
-          .from('purchase_requisitions')
-          .update({ status: 'po_created' })
-          .eq('id', selectedPR.id);
-
-        if (updateError) throw updateError;
-      }
-
-      alert(isManualPO 
-        ? 'Manual Purchase Order created successfully!\n\nNote: This PO was created without PR approval.\n\nRedirecting to PO Status Dashboard...'
-        : 'Purchase Order created successfully!\n\nRedirecting to PO Status Dashboard...');
-      
       setShowPOForm(false);
       setSelectedPR(null);
-      setPOForm({
-        supplier_id: '',
-        expected_delivery_date: '',
-        payment_terms: 'Net 30',
-        notes: '',
-        items: []
-      });
+      setPOForm({ supplier_id: '', expected_delivery_date: '', payment_terms: 'Net 30', notes: '', items: [] });
 
-      // Redirect to PO Status Dashboard
       if (onRedirectToPOStatus) {
-        setTimeout(() => {
-          onRedirectToPOStatus();
-        }, 500);
+        onRedirectToPOStatus();
       } else {
-        // Fallback: refresh data if no redirect callback
         fetchData();
       }
     } catch (error: any) {
