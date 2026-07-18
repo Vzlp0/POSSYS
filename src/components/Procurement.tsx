@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Package, Truck } from 'lucide-react';
+import { Package, Truck, FileText, ShoppingCart } from 'lucide-react';
 import ItemMaster from './ItemMaster';
 import SupplierManagement from './SupplierManagement';
+import PurchaseRequests from './PurchaseRequests';
+import PurchaseOrders from './PurchaseOrders';
 
 const procurementMenuItems = [
   {
@@ -15,6 +17,18 @@ const procurementMenuItems = [
     label: 'Suppliers',
     icon: Truck,
     description: 'Manage supplier information and contacts'
+  },
+  {
+    id: 'purchase-requests',
+    label: 'Purchase Requests (PR)',
+    icon: FileText,
+    description: 'Create and manage purchase requisitions'
+  },
+  {
+    id: 'purchase-orders',
+    label: 'Purchase Orders (PO)',
+    icon: ShoppingCart,
+    description: 'Create and manage purchase orders'
   }
 ];
 
@@ -44,6 +58,24 @@ export default function Procurement({ setActiveItem }: ProcurementProps = {}) {
 
   if (activeSection === 'suppliers') {
     return <SupplierManagement onBack={() => setActiveSection(null)} />;
+  }
+
+  if (activeSection === 'purchase-requests') {
+    return (
+      <PurchaseRequests
+        onBack={() => setActiveSection(null)}
+        onRedirectToPRStatus={handleRedirectToPRStatus}
+      />
+    );
+  }
+
+  if (activeSection === 'purchase-orders') {
+    return (
+      <PurchaseOrders
+        onBack={() => setActiveSection(null)}
+        onRedirectToPOStatus={handleRedirectToPOStatus}
+      />
+    );
   }
 
   return (
