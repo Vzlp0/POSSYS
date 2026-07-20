@@ -596,11 +596,11 @@ export default function PurchaseRequests({ onBack, onRedirectToPRStatus }: Purch
                     <div className="flex items-center space-x-3 mb-2">
                       <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{pr.pr_number}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pr.status)}`}>
-                        {pr.status.toUpperCase()}
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pr.status || '')}`}>
+                        {(pr.status || 'unknown').toUpperCase()}
                       </span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(pr.priority)}`}>
-                        {pr.priority.toUpperCase()}
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(pr.priority || '')}`}>
+                        {(pr.priority || 'normal').toUpperCase()}
                       </span>
                     </div>
 

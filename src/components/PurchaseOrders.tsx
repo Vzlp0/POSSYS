@@ -352,7 +352,7 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
 
     return (
       <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${colors[status] || 'bg-gray-100 text-gray-800'}`}>
-        {status.replace('_', ' ').toUpperCase()}
+        {(status || '').replace('_', ' ').toUpperCase()}
       </span>
     );
   };
@@ -366,7 +366,7 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
 
     return (
       <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${colors[status] || 'bg-gray-100 text-gray-800'}`}>
-        {status.replace('_', ' ').toUpperCase()}
+        {(status || '').replace('_', ' ').toUpperCase()}
       </span>
     );
   };
