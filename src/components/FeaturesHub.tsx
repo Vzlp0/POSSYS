@@ -15,7 +15,8 @@ import {
   UserPlus,
   Settings,
   UtensilsCrossed,
-  TrendingUp
+  TrendingUp,
+  Building2
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,6 +46,7 @@ const features: FeatureCard[] = [
   { id: 'menu-screens',     label: 'Menu Screens',     description: 'Digital displays',       icon: Monitor,         color: 'violet', roles: ['admin','manager'] },
   { id: 'combo-management', label: 'Combos',           description: 'Combo meals & bundles',  icon: UtensilsCrossed, color: 'amber',  roles: ['admin','manager'] },
   { id: 'combo-profit',     label: 'Combo Reports',    description: 'Combo profitability',    icon: TrendingUp,      color: 'lime',   roles: ['admin','manager'] },
+  { id: 'branch-management',label: 'Branches',          description: 'Add & manage branches',  icon: Building2,       color: 'teal',   roles: ['admin'] },
   { id: 'settings',         label: 'Settings',         description: 'System configuration',   icon: Settings,        color: 'gray',   roles: ['admin','manager'] },
 ];
 

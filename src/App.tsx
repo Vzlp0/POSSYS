@@ -6,6 +6,7 @@ import AccountSelector from './components/AccountSelector';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
+import BranchManagement from './components/BranchManagement';
 import HRManagement from './components/HRManagement';
 import ComingSoon from './components/ComingSoon';
 import Procurement from './components/Procurement';
@@ -108,6 +109,8 @@ function AppContent() {
         return <Dashboard setActiveItem={navigateTo} />;
       case 'users':
         return <UserManagement />;
+      case 'branch-management':
+        return <BranchManagement onBack={goBack} />;
       case 'hr-management':
         return <HRManagement />;
       case 'pos':
