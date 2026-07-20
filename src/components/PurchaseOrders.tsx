@@ -766,8 +766,8 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {purchaseOrders
                     .filter((po) =>
-                      po.po_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      po.supplier_name?.toLowerCase().includes(searchTerm.toLowerCase())
+                      (po.po_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      (po.supplier_name || '').toLowerCase().includes(searchTerm.toLowerCase())
                     )
                     .map((po) => (
                       <tr key={po.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
