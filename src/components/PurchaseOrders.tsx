@@ -142,7 +142,7 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
       let data: any[] = lsGet('pos_purchase_requisitions', []);
 
       const allowedStatuses = prStatusFilter === 'all'
-        ? ['approved', 'pending_po']
+        ? ['pending', 'approved', 'pending_po']
         : [prStatusFilter];
       data = data.filter(pr => allowedStatuses.includes(pr.status));
       data.sort((a, b) => new Date(b.pr_date || b.created_at).getTime() - new Date(a.pr_date || a.created_at).getTime());
@@ -180,7 +180,9 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
   const fetchSuppliers = () => {
     try {
       const data: any[] = lsGet('pos_suppliers', []);
-      setSuppliers(data.filter(s => s.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+      // normalize: suppliers may store name as 'name' or 'supplierName'
+      const normalized = data.map(s => ({ ...s, name: s.name || s.supplierName || '' }));
+      setSuppliers(normalized.filter(s => s.active !== false).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error('Error fetching suppliers:', error);
     }
@@ -205,9 +207,8 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
   };
 
   const handleSelectPR = (pr: PR) => {
-    // Only allow PO creation from approved PRs (status = 'pending_po')
-    if (pr.status !== 'pending_po') {
-      alert(`Cannot create PO from PR with status: ${pr.status}\n\nPR must be approved by Manager first (status: pending_po)`);
+    if (pr.status === 'po_created') {
+      alert('A PO has already been created from this PR.');
       return;
     }
 
@@ -370,7 +371,7 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
     );
   };
 
-  if (showPOForm && selectedPR) {
+  if (showPOForm) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
         <div className="max-w-6xl mx-auto">
@@ -735,7 +736,8 @@ export default function PurchaseOrders({ onBack, onRedirectToPOStatus, preSelect
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="all">All PR Status</option>
-                <option value="approved">Waiting for PO (Approved)</option>
+                <option value="pending">Pending Approval</option>
+                <option value="pending_po">Ready for PO</option>
                 <option value="po_created">PO Created</option>
               </select>
             </div>
